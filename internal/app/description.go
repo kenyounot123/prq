@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-var markdownLineMarker = regexp.MustCompile(`^(?:#{1,6}\s*|[-*+]\s*|\d+[.)]\s*)`)
+var markdownLineMarker = regexp.MustCompile(`^(?:#{1,6}(?:\s+|$)|[-*+](?:\s+|$)|\d+[.)](?:\s+|$))`)
 
 func CompactDescription(body string) string {
 	for _, line := range strings.Split(body, "\n") {
