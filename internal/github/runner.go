@@ -68,33 +68,50 @@ func (e *commandError) Unwrap() error {
 var mutationToken = regexp.MustCompile(`(?i)\bmutation\b`)
 
 func validateReadOnlyCommand(args []string) (string, error) {
-	if len(args) == 2 && args[0] == "auth" && args[1] == "status" {
-		return "gh auth status", nil
+	if len(args) >= 2 && args[0] == "auth" && args[1] == "status" {
+		if len(args) == 4 && args[2] == "--hostname" && args[3] == "github.com" {
+			return "gh auth status --hostname github.com", nil
+		}
+		return "", errors.New("refusing GitHub authentication command: hostname must be exactly github.com")
 	}
-	if len(args) < 4 || args[0] != "api" || args[1] != "graphql" {
+	if len(args) < 2 || args[0] != "api" || args[1] != "graphql" {
 		return "", errors.New("refusing GitHub command: read-only runner permits only auth status and fixed GraphQL queries")
 	}
-	if len(args)%2 != 0 {
+	if len(args) < 6 || args[2] != "--hostname" || args[3] != "github.com" {
+		return "", errors.New("refusing GitHub GraphQL command: hostname must be exactly github.com")
+	}
+	if (len(args)-4)%2 != 0 {
 		return "", errors.New("refusing GitHub GraphQL command: flags must have values")
 	}
 
 	var document string
 	var variables []string
-	for index := 2; index < len(args); index += 2 {
+	for index := 4; index < len(args); index += 2 {
 		flag, value := args[index], args[index+1]
 		switch flag {
 		case "-f":
-			if document != "" || !strings.HasPrefix(value, "query=") {
-				return "", errors.New("refusing GitHub GraphQL command: exactly one query document is required")
+			name, rawValue, ok := strings.Cut(value, "=")
+			if !ok || name == "" {
+				return "", errors.New("refusing GitHub GraphQL command: raw fields must use name=value")
 			}
-			document = strings.TrimPrefix(value, "query=")
-		case "-F":
+			if name == "query" {
+				if document != "" {
+					return "", errors.New("refusing GitHub GraphQL command: exactly one query document is required")
+				}
+				document = rawValue
+				continue
+			}
 			variables = append(variables, value)
+		case "-F":
+			return "", errors.New("refusing GitHub GraphQL command: typed fields are prohibited; variables must use raw -f fields")
 		default:
 			return "", fmt.Errorf("refusing GitHub GraphQL command: flag %q is not read-only approved", flag)
 		}
 	}
 
+	if document == "" {
+		return "", errors.New("refusing GitHub GraphQL command: exactly one query document is required")
+	}
 	if mutationToken.MatchString(document) {
 		return "", errors.New("refusing GitHub GraphQL mutation: PRQ is read-only")
 	}
@@ -107,7 +124,7 @@ func validateReadOnlyCommand(args []string) (string, error) {
 		return "", err
 	}
 
-	return "gh api graphql", nil
+	return "gh api graphql --hostname github.com", nil
 }
 
 func approvedQueryVariables(document string) (map[string]bool, bool) {
@@ -115,11 +132,11 @@ func approvedQueryVariables(document string) (map[string]bool, bool) {
 	case currentViewerQuery:
 		return map[string]bool{}, true
 	case viewerOrganizationsQuery:
-		return map[string]bool{"cursor": true}, true
+		return map[string]bool{"cursor": false}, true
 	case organizationRepositoriesQuery:
-		return map[string]bool{"organization": true, "cursor": true}, true
+		return map[string]bool{"organization": true, "cursor": false}, true
 	case openPullRequestsQuery:
-		return map[string]bool{"search": true, "cursor": true}, true
+		return map[string]bool{"search": true, "cursor": false}, true
 	default:
 		return nil, false
 	}
@@ -129,13 +146,18 @@ func validateVariables(variables []string, allowed map[string]bool) error {
 	seen := make(map[string]bool, len(variables))
 	for _, variable := range variables {
 		name, _, ok := strings.Cut(variable, "=")
-		if !ok || name == "" || !allowed[name] {
+		if _, declared := allowed[name]; !ok || name == "" || !declared {
 			return fmt.Errorf("refusing GitHub GraphQL command: variable %q is not declared by the fixed query", name)
 		}
 		if seen[name] {
 			return fmt.Errorf("refusing GitHub GraphQL command: variable %q is duplicated", name)
 		}
 		seen[name] = true
+	}
+	for name, required := range allowed {
+		if required && !seen[name] {
+			return fmt.Errorf("refusing GitHub GraphQL command: required variable %q is missing", name)
+		}
 	}
 	return nil
 }

@@ -98,7 +98,7 @@ func (m *Model) syncDetailViewport() {
 	content := ""
 	if m.selected < 0 || m.selected >= len(m.pullRequests) {
 	} else {
-		content = m.pullRequests[m.selected].Body
+		content = sanitizeTerminalText(m.pullRequests[m.selected].Body, true)
 	}
 	if m.detailViewport.Width() > 0 {
 		content = ansi.Wrap(content, m.detailViewport.Width(), " ")

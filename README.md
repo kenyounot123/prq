@@ -58,7 +58,7 @@ You need:
 Check authentication with:
 
 ```bash
-gh auth status
+gh auth status --hostname github.com
 ```
 
 If needed, authenticate before starting PRQ:
@@ -88,8 +88,11 @@ prq
 ```
 
 When no valid configuration exists, PRQ starts setup automatically. Choose one
-GitHub organization, then select one or more repositories. PRQ saves the
-selection only after setup succeeds and opens the dashboard.
+GitHub organization, then select one or more repositories. After the prompts
+succeed, PRQ atomically commits the selection and opens the dashboard. Cleanup
+of an older cache is best effort: every cache is bound to the normalized
+selection that produced it, so PRQ ignores a leftover cache rather than showing
+pull requests from a different configuration.
 
 Run `prq setup` whenever you want to replace the organization and repository
 selection. The available command surface is:

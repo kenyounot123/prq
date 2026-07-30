@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -228,6 +229,116 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *testing.T) {
+	pullRequest := app.PullRequest{
+		ID:         "PR_hostile",
+		Repository: "acme/\x1b[31mapi\x1b[0m",
+		Number:     9,
+		Title:      "Fix \x1b]8;;https://evil.example\x1b\\linked\x1b]8;;\x1b\\ title\rback\bspace\u0085c1",
+		Body:       "First \x1b]52;c;c2VjcmV0\x07line\r\nSecond\b line\u0085end",
+		URL:        "https://github.com/acme/api/pull/9\x1b[2J",
+		CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
+		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
+		Review:     app.ReviewState("approved\x1b[2J\rnow"),
+		Checks:     app.CheckState("passing\x1b]52;c;c3RhdHVz\x07\bnow"),
+	}
+	original := pullRequest
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot(pullRequest)),
+		nil,
+		testDependencies(),
+	)
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 180, Height: 32})
+
+	raw := model.View().Content
+	stripped := ansi.Strip(raw)
+	for _, want := range []string{
+		"acme/api #9",
+		"Fix linked title�back�space�c1",
+		"https://github.com/acme/api/pull/9",
+		"First line",
+		"Second� line�end",
+		"Review: approved�now",
+		"Checks: passing�now",
+	} {
+		if !strings.Contains(stripped, want) {
+			t.Errorf("sanitized render missing %q:\n%s", want, stripped)
+		}
+	}
+	for _, forbidden := range []string{
+		"https://evil.example",
+		"c2VjcmV0",
+		"\x1b[31m",
+		"\x1b[2J",
+		"\r",
+		"\b",
+		"\u0085",
+	} {
+		if strings.Contains(stripped, forbidden) {
+			t.Errorf("sanitized render contains %q:\n%s", forbidden, stripped)
+		}
+	}
+	for _, forbidden := range []string{
+		"\x1b[2J",
+		"\x1b]8;",
+		"\x1b]52;",
+	} {
+		if strings.Contains(raw, forbidden) {
+			t.Errorf("raw render contains untrusted terminal sequence %q", forbidden)
+		}
+	}
+	if !strings.Contains(model.detailViewport.GetContent(), "\n") {
+		t.Fatalf("sanitized detail body lost intended newline: %q", model.detailViewport.GetContent())
+	}
+	if !reflect.DeepEqual(model.pullRequests[0], original) {
+		t.Fatalf("render mutated domain pull request = %#v, want %#v", model.pullRequests[0], original)
+	}
+}
+
+func TestRenderSanitizesUntrustedErrorsAndStatusText(t *testing.T) {
+	hostile := errors.New("network \x1b[2Jfailed\x1b]52;c;c2VjcmV0\x07\rnow\b\u0085")
+
+	t.Run("first refresh error", func(t *testing.T) {
+		model := NewModel(
+			context.Background(),
+			app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+			nil,
+			nil,
+			testDependencies(),
+		)
+		model = updateModel(t, model, refreshDoneMsg{err: hostile})
+		model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+
+		stripped := ansi.Strip(model.View().Content)
+		if !strings.Contains(stripped, "Refresh failed: network failed�now��") {
+			t.Fatalf("sanitized refresh error missing from render:\n%s", stripped)
+		}
+		if strings.Contains(stripped, "c2VjcmV0") || strings.Contains(stripped, "\r") || strings.Contains(stripped, "\b") {
+			t.Fatalf("refresh error retained unsafe content:\n%s", stripped)
+		}
+	})
+
+	t.Run("action status", func(t *testing.T) {
+		model := renderTestModel()
+		model = updateModel(t, model, actionDoneMsg{
+			generation: model.generation,
+			action:     "Copy",
+			err:        hostile,
+		})
+		model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+
+		stripped := ansi.Strip(model.View().Content)
+		if !strings.Contains(stripped, "Copy failed: network failed�now��") {
+			t.Fatalf("sanitized action status missing from render:\n%s", stripped)
+		}
+		if strings.Contains(stripped, "c2VjcmV0") || strings.Contains(stripped, "\r") || strings.Contains(stripped, "\b") {
+			t.Fatalf("action status retained unsafe content:\n%s", stripped)
+		}
+	})
 }
 
 func renderTestModel() Model {

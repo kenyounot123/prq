@@ -43,7 +43,10 @@ func TestServiceRefreshSortsTimestampsAndSavesFreshSnapshot(t *testing.T) {
 		},
 	}
 
-	result, err := service.Refresh(context.Background(), Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}})
+	result, err := service.Refresh(context.Background(), Selection{
+		Organization: " Acme ",
+		Repositories: []string{" Acme/Web ", "acme/api", "ACME/web"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +61,15 @@ func TestServiceRefreshSortsTimestampsAndSavesFreshSnapshot(t *testing.T) {
 	if len(cache.saved) != 1 {
 		t.Fatalf("Save() calls = %d, want 1", len(cache.saved))
 	}
-	if !reflect.DeepEqual(cache.saved[0], result.Snapshot) {
-		t.Fatalf("saved snapshot = %#v, want %#v", cache.saved[0], result.Snapshot)
+	wantSelection := Selection{
+		Organization: "Acme",
+		Repositories: []string{"acme/api", "Acme/Web"},
+	}
+	if !reflect.DeepEqual(cache.saved[0].selection, wantSelection) {
+		t.Fatalf("saved selection = %#v, want normalized %#v", cache.saved[0].selection, wantSelection)
+	}
+	if !reflect.DeepEqual(cache.saved[0].snapshot, result.Snapshot) {
+		t.Fatalf("saved snapshot = %#v, want %#v", cache.saved[0].snapshot, result.Snapshot)
 	}
 }
 
@@ -145,12 +155,17 @@ func (r fakePullRequestReader) ListOpenPullRequests(context.Context, string, []s
 }
 
 type fakeSnapshotWriter struct {
-	saved []Snapshot
+	saved []savedSnapshot
 	err   error
 }
 
-func (w *fakeSnapshotWriter) Save(snapshot Snapshot) error {
-	w.saved = append(w.saved, snapshot)
+type savedSnapshot struct {
+	selection Selection
+	snapshot  Snapshot
+}
+
+func (w *fakeSnapshotWriter) Save(selection Selection, snapshot Snapshot) error {
+	w.saved = append(w.saved, savedSnapshot{selection: selection, snapshot: snapshot})
 	return w.err
 }
 

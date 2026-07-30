@@ -84,9 +84,9 @@ func (f Flow) Run(ctx context.Context) (app.Selection, error) {
 	if err := f.Config.Save(selection); err != nil {
 		return app.Selection{}, fmt.Errorf("save configuration: %w", err)
 	}
-	if err := f.Cache.Clear(); err != nil {
-		return app.Selection{}, fmt.Errorf("clear cache: %w", err)
-	}
+	// The cache is selection-bound, so a cache left behind after this
+	// best-effort cleanup cannot be loaded for the newly committed selection.
+	_ = f.Cache.Clear()
 	return selection, nil
 }
 

@@ -268,19 +268,6 @@ func TestFlowRunWrapsStageErrorsAndStops(t *testing.T) {
 			},
 			want: "save configuration",
 		},
-		"clear cache": {
-			flow: Flow{
-				GitHub: successfulGitHub(),
-				Prompt: selectingPrompter(),
-				Config: fakeConfigWriter{save: func(app.Selection) error {
-					return nil
-				}},
-				Cache: fakeCacheInvalidator{clear: func() error {
-					return errStage
-				}},
-			},
-			want: "clear cache",
-		},
 	}
 
 	for name, tt := range tests {
@@ -299,6 +286,37 @@ func TestFlowRunWrapsStageErrorsAndStops(t *testing.T) {
 				t.Fatalf("Run() = %#v after failure, want zero selection", got)
 			}
 		})
+	}
+}
+
+func TestFlowRunTreatsCacheClearFailureAsRecoverableAfterConfigurationCommit(t *testing.T) {
+	clearErr := errors.New("cache is locked")
+	saved := false
+
+	got, err := (Flow{
+		GitHub: successfulGitHub(),
+		Prompt: selectingPrompter(),
+		Config: fakeConfigWriter{save: func(app.Selection) error {
+			saved = true
+			return nil
+		}},
+		Cache: fakeCacheInvalidator{clear: func() error {
+			if !saved {
+				t.Fatal("cache clear ran before configuration commit")
+			}
+			return clearErr
+		}},
+	}).Run(context.Background())
+
+	if err != nil {
+		t.Fatalf("Run() error = %v, want cache cleanup failure to be recoverable", err)
+	}
+	want := app.Selection{
+		Organization: "Acme",
+		Repositories: []string{"Acme/api"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Run() = %#v, want committed selection %#v", got, want)
 	}
 }
 

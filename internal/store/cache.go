@@ -3,11 +3,12 @@ package store
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/kenyounot123/prq/internal/app"
 )
 
-const cacheVersion = 1
+const cacheVersion = 2
 
 type CacheStore struct {
 	Path string
@@ -15,10 +16,11 @@ type CacheStore struct {
 
 type cacheFile struct {
 	Version int `json:"version"`
+	app.Selection
 	app.Snapshot
 }
 
-func (s CacheStore) Load() (app.Snapshot, error) {
+func (s CacheStore) Load(selection app.Selection) (app.Snapshot, error) {
 	var stored cacheFile
 	if err := readJSON(s.Path, &stored); err != nil {
 		return app.Snapshot{}, err
@@ -26,14 +28,36 @@ func (s CacheStore) Load() (app.Snapshot, error) {
 	if stored.Version != cacheVersion {
 		return app.Snapshot{}, fmt.Errorf("load cache %s: version %d: %w", s.Path, stored.Version, ErrVersion)
 	}
-	if err := validateSnapshot(stored.Snapshot); err != nil {
+	storedSelection, err := app.NormalizeSelection(stored.Organization, stored.Repositories)
+	if err != nil {
+		return app.Snapshot{}, fmt.Errorf("load cache %s: %w: invalid cached selection: %v", s.Path, ErrInvalid, err)
+	}
+	expectedSelection, err := app.NormalizeSelection(selection.Organization, selection.Repositories)
+	if err != nil {
+		return app.Snapshot{}, fmt.Errorf("load cache %s: %w: invalid configured selection: %v", s.Path, ErrInvalid, err)
+	}
+	if !sameSelection(storedSelection, expectedSelection) {
+		return app.Snapshot{}, fmt.Errorf("load cache %s: %w", s.Path, ErrSelectionMismatch)
+	}
+	if err := validateSnapshot(stored.Snapshot, storedSelection); err != nil {
 		return app.Snapshot{}, fmt.Errorf("load cache %s: %w: %v", s.Path, ErrInvalid, err)
 	}
 	return stored.Snapshot, nil
 }
 
-func (s CacheStore) Save(snapshot app.Snapshot) error {
-	if err := writeJSONAtomic(s.Path, cacheFile{Version: cacheVersion, Snapshot: snapshot}); err != nil {
+func (s CacheStore) Save(selection app.Selection, snapshot app.Snapshot) error {
+	normalized, err := app.NormalizeSelection(selection.Organization, selection.Repositories)
+	if err != nil {
+		return fmt.Errorf("save cache %s: %w: invalid selection: %v", s.Path, ErrInvalid, err)
+	}
+	if err := validateSnapshot(snapshot, normalized); err != nil {
+		return fmt.Errorf("save cache %s: %w: %v", s.Path, ErrInvalid, err)
+	}
+	if err := writeJSONAtomic(s.Path, cacheFile{
+		Version:   cacheVersion,
+		Selection: normalized,
+		Snapshot:  snapshot,
+	}); err != nil {
 		return fmt.Errorf("save cache %s: %w", s.Path, err)
 	}
 	return nil
@@ -46,7 +70,7 @@ func (s CacheStore) Clear() error {
 	return nil
 }
 
-func validateSnapshot(snapshot app.Snapshot) error {
+func validateSnapshot(snapshot app.Snapshot, selection app.Selection) error {
 	if snapshot.FetchedAt.IsZero() {
 		return fmt.Errorf("fetched at is required")
 	}
@@ -56,6 +80,8 @@ func validateSnapshot(snapshot app.Snapshot) error {
 			return fmt.Errorf("pull request ID is required")
 		case pullRequest.Repository == "":
 			return fmt.Errorf("pull request repository is required")
+		case !selectionContainsRepository(selection, pullRequest.Repository):
+			return fmt.Errorf("pull request repository %q is outside the cached selection", pullRequest.Repository)
 		case pullRequest.Number <= 0:
 			return fmt.Errorf("pull request number is required")
 		case pullRequest.Title == "":
@@ -69,4 +95,26 @@ func validateSnapshot(snapshot app.Snapshot) error {
 		}
 	}
 	return nil
+}
+
+func sameSelection(left, right app.Selection) bool {
+	if !strings.EqualFold(left.Organization, right.Organization) ||
+		len(left.Repositories) != len(right.Repositories) {
+		return false
+	}
+	for index := range left.Repositories {
+		if !strings.EqualFold(left.Repositories[index], right.Repositories[index]) {
+			return false
+		}
+	}
+	return true
+}
+
+func selectionContainsRepository(selection app.Selection, repository string) bool {
+	for _, candidate := range selection.Repositories {
+		if strings.EqualFold(candidate, repository) {
+			return true
+		}
+	}
+	return false
 }

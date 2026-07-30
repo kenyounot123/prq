@@ -18,7 +18,7 @@ func NewClient(runner Runner) *Client {
 }
 
 func (c *Client) CheckAuth(ctx context.Context) error {
-	if _, err := c.runner.Run(ctx, "auth", "status"); err != nil {
+	if _, err := c.runner.Run(ctx, "auth", "status", "--hostname", "github.com"); err != nil {
 		return fmt.Errorf("check GitHub authentication: %w", err)
 	}
 	return nil
@@ -29,6 +29,8 @@ func (c *Client) CurrentViewer(ctx context.Context) (string, error) {
 		ctx,
 		"api",
 		"graphql",
+		"--hostname",
+		"github.com",
 		"-f",
 		"query="+currentViewerQuery,
 	)
@@ -58,11 +60,13 @@ func (c *Client) ListOrganizations(ctx context.Context) ([]string, error) {
 		args := []string{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + viewerOrganizationsQuery,
 		}
 		if cursor != "" {
-			args = append(args, "-F", "cursor="+cursor)
+			args = append(args, "-f", "cursor="+cursor)
 		}
 
 		output, err := c.runner.Run(ctx, args...)
@@ -109,13 +113,15 @@ func (c *Client) ListRepositories(ctx context.Context, organization string) ([]s
 		args := []string{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + organizationRepositoriesQuery,
-			"-F",
+			"-f",
 			"organization=" + organization,
 		}
 		if cursor != "" {
-			args = append(args, "-F", "cursor="+cursor)
+			args = append(args, "-f", "cursor="+cursor)
 		}
 
 		output, err := c.runner.Run(ctx, args...)

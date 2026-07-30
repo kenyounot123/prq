@@ -72,10 +72,15 @@ The setup flow uses terminal forms from the Charm ecosystem and proceeds as foll
 6. Present a searchable multi-select repository list.
 7. Require at least one repository.
 8. Save the configuration atomically.
-9. Invalidate any cache created for the previous repository selection.
+9. Best-effort remove any cache created for the previous repository selection.
 10. Open the dashboard and perform an initial refresh.
 
 PRQ never starts `gh auth login` itself. If `gh` is missing or unauthenticated, setup presents the appropriate install or login command and exits without writing configuration.
+
+Once the configuration write succeeds, setup is committed even if obsolete
+cache cleanup fails. Cache snapshots are bound to the normalized selection that
+produced them, so an old cache cannot be displayed for the newly committed
+selection and can be replaced by the dashboard's next successful refresh.
 
 Only one organization can be selected in version 1. Repository choices are stored as canonical, case-preserving `owner/name` values and deduplicated case-insensitively.
 
@@ -85,7 +90,8 @@ Only one organization can be selected in version 1. Repository choices are store
 
 When the dashboard starts:
 
-1. Load the last successful cache.
+1. Load the last successful cache only when its bound selection matches the
+   active normalized configuration.
 2. Render cached PRs immediately when present.
 3. Start a GitHub refresh in the background.
 4. Replace the visible model and cache after a successful refresh.
@@ -265,7 +271,11 @@ There is no generic GitHub request method in the application interface and no wr
 The concrete gateway:
 
 - Uses `exec.CommandContext` with an argument array, never a shell command string.
+- Pins authentication and API subprocesses to `github.com`, so unrelated
+  enterprise-host authentication failures and `GH_HOST` cannot redirect PRQ.
 - Uses fixed, package-private GraphQL `query` documents through `gh api graphql`.
+- Passes every GraphQL variable with raw `-f` fields, preserving opaque cursor
+  bytes and preventing `gh` typed-field file expansion or value conversion.
 - Uses cursor pagination until all available pages are read.
 - Reads organizations from `viewer.organizations` and repositories from the
   selected organization.
@@ -302,7 +312,11 @@ The exact paths are derived with `os.UserConfigDir` and `os.UserCacheDir`; the p
 
 Both files are private implementation formats rather than public compatibility contracts. Each contains an internal version number so incompatible data can be detected. Writes use a temporary file in the destination directory followed by an atomic rename. Files are created with user-only permissions where supported.
 
-Configuration contains the selected organization and repository allowlist. Cache contains the last successful normalized PR result and its fetch time. Neither contains a GitHub token.
+Configuration contains the selected organization and repository allowlist.
+Cache contains the normalized selection that produced it, the last successful
+normalized PR result, and its fetch time. A cache with a different selection is
+ignored, including after a manual valid configuration change or an overlapping
+setup/refresh process. Neither file contains a GitHub token.
 
 ## macOS Actions
 

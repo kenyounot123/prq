@@ -92,25 +92,31 @@ func TestListOpenPullRequestsPaginatesFiltersAndNormalizes(t *testing.T) {
 		{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + currentViewerQuery,
 		},
 		{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + openPullRequestsQuery,
-			"-F",
+			"-f",
 			"search=" + searchQuery,
 		},
 		{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + openPullRequestsQuery,
-			"-F",
+			"-f",
 			"search=" + searchQuery,
-			"-F",
+			"-f",
 			"cursor=pull-requests-cursor-1",
 		},
 	}
@@ -118,12 +124,12 @@ func TestListOpenPullRequestsPaginatesFiltersAndNormalizes(t *testing.T) {
 		t.Fatalf("runner calls = %#v, want %#v", runner.calls, wantCalls)
 	}
 	for _, call := range runner.calls[1:] {
-		if call[3] != "query="+openPullRequestsQuery {
-			t.Fatalf("GraphQL document argument = %q, want fixed query byte-for-byte", call[3])
+		if call[5] != "query="+openPullRequestsQuery {
+			t.Fatalf("GraphQL document argument = %q, want fixed query byte-for-byte", call[5])
 		}
 		for _, repository := range []string{"acme/web", "ACME/API", "Acme/Web"} {
-			if strings.Contains(call[3], repository) {
-				t.Fatalf("GraphQL document contains repository %q: %q", repository, call[3])
+			if strings.Contains(call[5], repository) {
+				t.Fatalf("GraphQL document contains repository %q: %q", repository, call[5])
 			}
 		}
 	}

@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	ErrNotFound = errors.New("store file not found")
-	ErrInvalid  = errors.New("store data is invalid")
-	ErrVersion  = errors.New("store version is unsupported")
+	ErrNotFound          = errors.New("store file not found")
+	ErrInvalid           = errors.New("store data is invalid")
+	ErrVersion           = errors.New("store version is unsupported")
+	ErrSelectionMismatch = errors.New("cache selection does not match configuration")
 )
 
 var (

@@ -41,13 +41,15 @@ func (c *Client) ListOpenPullRequests(
 		args := []string{
 			"api",
 			"graphql",
+			"--hostname",
+			"github.com",
 			"-f",
 			"query=" + openPullRequestsQuery,
-			"-F",
+			"-f",
 			"search=" + searchQuery,
 		}
 		if cursor != "" {
-			args = append(args, "-F", "cursor="+cursor)
+			args = append(args, "-f", "cursor="+cursor)
 		}
 
 		output, err := c.runner.Run(ctx, args...)

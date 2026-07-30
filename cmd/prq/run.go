@@ -43,7 +43,7 @@ const (
 
 type runtimeDeps struct {
 	loadConfig   func() (app.Selection, error)
-	loadCache    func() (app.Snapshot, error)
+	loadCache    func(app.Selection) (app.Snapshot, error)
 	runSetup     func(context.Context) (app.Selection, error)
 	runDashboard func(context.Context, app.Selection, *app.Snapshot, error) error
 }
@@ -242,13 +242,13 @@ func runDashboardCommand(ctx context.Context, stderr io.Writer, deps runtimeDeps
 		return reportError(stderr, err)
 	}
 
-	cached, cacheErr := deps.loadCache()
+	cached, cacheErr := deps.loadCache(selection)
 	var cachedSnapshot *app.Snapshot
 	var cacheWarning error
 	switch {
 	case cacheErr == nil:
 		cachedSnapshot = &cached
-	case errors.Is(cacheErr, store.ErrNotFound):
+	case errors.Is(cacheErr, store.ErrNotFound), errors.Is(cacheErr, store.ErrSelectionMismatch):
 	default:
 		cacheWarning = cacheErr
 	}

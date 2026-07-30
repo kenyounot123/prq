@@ -98,10 +98,11 @@ func (m Model) renderListPane(width, height int) string {
 	case m.loading && len(m.pullRequests) == 0:
 		lines = append(lines, "", "Loading pull requests…")
 	case m.refreshErr != nil && !m.stale:
+		refreshError := sanitizeTerminalText(m.refreshErr.Error(), false)
 		lines = append(
 			lines,
 			"",
-			errorStyle.Render(truncateLine("Refresh failed: "+m.refreshErr.Error(), innerWidth)),
+			errorStyle.Render(truncateLine("Refresh failed: "+refreshError, innerWidth)),
 			"Press r to retry or q to quit.",
 		)
 	case len(m.pullRequests) == 0:
@@ -123,6 +124,11 @@ func (m Model) renderListPane(width, height int) string {
 }
 
 func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, width int) []string {
+	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
+	titleText := sanitizeTerminalText(pullRequest.Title, false)
+	bodyText := sanitizeTerminalText(pullRequest.Body, true)
+	reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
+	checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
 	marker := "  "
 	if selected {
 		marker = "› "
@@ -132,14 +138,14 @@ func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, 
 		state = "  DRAFT"
 	}
 	repository := truncateLine(
-		fmt.Sprintf("%s%s #%d%s", marker, pullRequest.Repository, pullRequest.Number, state),
+		fmt.Sprintf("%s%s #%d%s", marker, repositoryText, pullRequest.Number, state),
 		width,
 	)
-	title := truncateLine("  "+oneLine(pullRequest.Title), width)
-	description := truncateLine("  "+app.CompactDescription(pullRequest.Body), width)
-	review := truncateLine("  review: "+string(pullRequest.Review), width)
+	title := truncateLine("  "+oneLine(titleText), width)
+	description := truncateLine("  "+app.CompactDescription(bodyText), width)
+	review := truncateLine("  review: "+reviewText, width)
 	checks := truncateLine(
-		fmt.Sprintf("  checks: %s  •  %s", pullRequest.Checks, relativeAge(m.now(), pullRequest.UpdatedAt)),
+		fmt.Sprintf("  checks: %s  •  %s", checksText, relativeAge(m.now(), pullRequest.UpdatedAt)),
 		width,
 	)
 	if selected {
@@ -159,19 +165,24 @@ func (m Model) renderDetailPane(width, height int) string {
 		}
 	} else {
 		pullRequest := m.pullRequests[m.selected]
+		repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
+		titleText := sanitizeTerminalText(pullRequest.Title, false)
+		urlText := sanitizeTerminalText(pullRequest.URL, false)
+		reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
+		checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
 		state := "open"
 		if pullRequest.Draft {
 			state = "draft"
 		}
 		lines = append(lines,
-			truncateLine(fmt.Sprintf("%s #%d", pullRequest.Repository, pullRequest.Number), innerWidth),
-			truncateLine(oneLine(pullRequest.Title), innerWidth),
+			truncateLine(fmt.Sprintf("%s #%d", repositoryText, pullRequest.Number), innerWidth),
+			truncateLine(oneLine(titleText), innerWidth),
 			"State: "+state,
 			"Created: "+pullRequest.CreatedAt.UTC().Format("2006-01-02 15:04 MST"),
 			"Updated: "+pullRequest.UpdatedAt.UTC().Format("2006-01-02 15:04 MST"),
-			"Review: "+string(pullRequest.Review),
-			"Checks: "+string(pullRequest.Checks),
-			truncateLine(pullRequest.URL, innerWidth),
+			"Review: "+reviewText,
+			"Checks: "+checksText,
+			truncateLine(urlText, innerWidth),
 		)
 	}
 	lines = append(lines, m.detailViewport.View())
@@ -187,6 +198,7 @@ func (m Model) renderStatus() string {
 	case m.cacheWarning != nil:
 		status = "Warning: " + m.cacheWarning.Error()
 	}
+	status = sanitizeTerminalText(status, false)
 	return lipgloss.NewStyle().
 		Foreground(mutedColor).
 		Width(max(0, m.width)).

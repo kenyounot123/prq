@@ -65,7 +65,7 @@ func TestRunWithDepsMissingConfigRunsSetupThenDashboard(t *testing.T) {
 			calls = append(calls, "load config")
 			return app.Selection{}, fmt.Errorf("read /tmp/config.json: %w", store.ErrNotFound)
 		},
-		loadCache: func() (app.Snapshot, error) {
+		loadCache: func(app.Selection) (app.Snapshot, error) {
 			t.Fatal("missing configuration must not load the old cache")
 			return app.Snapshot{}, nil
 		},
@@ -144,7 +144,7 @@ func TestRunWithDepsExplicitSetupAlwaysRunsSetupThenDashboard(t *testing.T) {
 			t.Fatal("explicit setup must not load configuration first")
 			return app.Selection{}, nil
 		},
-		loadCache: func() (app.Snapshot, error) {
+		loadCache: func(app.Selection) (app.Snapshot, error) {
 			t.Fatal("explicit setup must not load the invalidated cache")
 			return app.Snapshot{}, nil
 		},
@@ -184,8 +184,11 @@ func TestRunWithDepsValidConfigLoadsCacheBeforeDashboard(t *testing.T) {
 			calls = append(calls, "load config")
 			return selection, nil
 		},
-		loadCache: func() (app.Snapshot, error) {
+		loadCache: func(got app.Selection) (app.Snapshot, error) {
 			calls = append(calls, "load cache")
+			if !reflect.DeepEqual(got, selection) {
+				t.Fatalf("cache selection = %#v, want %#v", got, selection)
+			}
 			return snapshot, nil
 		},
 		runSetup: func(context.Context) (app.Selection, error) {
@@ -231,6 +234,14 @@ func TestRunWithDepsCorruptCacheWarnsDashboardAndRefreshesWithoutCache(t *testin
 		t,
 		fmt.Errorf("decode /tmp/cache.json: %w", store.ErrInvalid),
 		true,
+	)
+}
+
+func TestRunWithDepsSelectionMismatchIgnoresCrashWindowCacheWithoutWarning(t *testing.T) {
+	assertCacheLoadFailure(
+		t,
+		fmt.Errorf("load /tmp/cache.json: %w", store.ErrSelectionMismatch),
+		false,
 	)
 }
 
@@ -308,7 +319,7 @@ func TestRunWithDepsUsageAndOperationalErrorsWriteOnlyStderr(t *testing.T) {
 				loadConfig: func() (app.Selection, error) {
 					return testSelection(), nil
 				},
-				loadCache: func() (app.Snapshot, error) {
+				loadCache: func(app.Selection) (app.Snapshot, error) {
 					return app.Snapshot{}, store.ErrNotFound
 				},
 				runDashboard: func(context.Context, app.Selection, *app.Snapshot, error) error {
@@ -360,12 +371,12 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 	}{
 		{
 			name:     "authentication",
-			args:     []string{"auth", "status"},
+			args:     []string{"auth", "status", "--hostname", "github.com"},
 			wantExit: 0,
 		},
 		{
 			name: "viewer",
-			args: []string{"api", "graphql", "-f", "query=" + `query CurrentViewer {
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query CurrentViewer {
   viewer { login }
 }`},
 			wantOutput: `"login": "OctoCat"`,
@@ -373,7 +384,7 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 		},
 		{
 			name: "organizations",
-			args: []string{"api", "graphql", "-f", "query=" + `query ViewerOrganizations($cursor: String) {
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query ViewerOrganizations($cursor: String) {
   viewer {
     organizations(first: 100, after: $cursor) {
       nodes { login }
@@ -386,20 +397,20 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 		},
 		{
 			name: "repositories",
-			args: []string{"api", "graphql", "-f", "query=" + `query OrganizationRepositories($organization: String!, $cursor: String) {
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query OrganizationRepositories($organization: String!, $cursor: String) {
   organization(login: $organization) {
     repositories(first: 100, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
       nodes { nameWithOwner }
       pageInfo { hasNextPage endCursor }
     }
   }
-}`, "-F", "organization=Acme"},
+}`, "-f", "organization=Acme"},
 			wantOutput: `"nameWithOwner": "Acme/Zulu"`,
 			wantExit:   0,
 		},
 		{
 			name: "pull requests",
-			args: []string{"api", "graphql", "-f", "query=" + `query OpenPullRequests($search: String!, $cursor: String) {
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query OpenPullRequests($search: String!, $cursor: String) {
   search(query: $search, type: ISSUE, first: 100, after: $cursor) {
     nodes {
       ... on PullRequest {
@@ -418,9 +429,41 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
     }
     pageInfo { hasNextPage endCursor }
   }
-}`, "-F", "search=is:pr is:open author:OctoCat org:Acme"},
+}`, "-f", "search=is:pr is:open author:OctoCat org:Acme"},
 			wantOutput: `"id": "PR_approved"`,
 			wantExit:   0,
+		},
+		{
+			name:     "authentication missing hostname",
+			args:     []string{"auth", "status"},
+			wantExit: 64,
+		},
+		{
+			name:     "authentication with other hostname",
+			args:     []string{"auth", "status", "--hostname", "enterprise.example"},
+			wantExit: 64,
+		},
+		{
+			name:     "API missing hostname",
+			args:     []string{"api", "graphql", "-f", "query=query CurrentViewer { viewer { login } }"},
+			wantExit: 64,
+		},
+		{
+			name:     "API with other hostname",
+			args:     []string{"api", "graphql", "--hostname", "enterprise.example", "-f", "query=query CurrentViewer { viewer { login } }"},
+			wantExit: 64,
+		},
+		{
+			name: "typed GraphQL variable",
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query ViewerOrganizations($cursor: String) {
+  viewer {
+    organizations(first: 100, after: $cursor) {
+      nodes { login }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`, "-F", "cursor=organizations-cursor-1"},
+			wantExit: 64,
 		},
 		{
 			name:     "unknown command",
@@ -434,24 +477,24 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 		},
 		{
 			name:     "approved query with extra flag",
-			args:     []string{"api", "graphql", "-f", "query=query CurrentViewer { viewer { login } }", "--method", "POST"},
+			args:     []string{"api", "graphql", "--hostname", "github.com", "-f", "query=query CurrentViewer { viewer { login } }", "--method", "POST"},
 			wantExit: 64,
 		},
 		{
 			name: "known operation name with altered document",
-			args: []string{"api", "graphql", "-f", "query=" + `query CurrentViewer {
+			args: []string{"api", "graphql", "--hostname", "github.com", "-f", "query=" + `query CurrentViewer {
   viewer { login name }
 }`},
 			wantExit: 64,
 		},
 		{
 			name:     "mutation argument",
-			args:     []string{"api", "graphql", "-f", "query=mutation Merge { mergePullRequest(input: {}) { pullRequest { id } } }"},
+			args:     []string{"api", "graphql", "--hostname", "github.com", "-f", "query=mutation Merge { mergePullRequest(input: {}) { pullRequest { id } } }"},
 			wantExit: 65,
 		},
 		{
 			name:     "mutation stdin",
-			args:     []string{"auth", "status"},
+			args:     []string{"auth", "status", "--hostname", "github.com"},
 			stdin:    "mutation",
 			wantExit: 65,
 		},
@@ -521,6 +564,8 @@ func TestRuntimeDepsWireConcretePackagesThroughFakeExecutables(t *testing.T) {
 	captureDirectory := t.TempDir()
 	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("PRQ_TEST_CAPTURE_DIR", captureDirectory)
+	t.Setenv("GH_HOST", "enterprise.invalid")
+	t.Setenv("PRQ_TEST_GH_UNRELATED_AUTH_ERROR", "expired enterprise account")
 
 	storeRoot := t.TempDir()
 	paths := store.Paths{
@@ -548,10 +593,16 @@ func TestRuntimeDepsWireConcretePackagesThroughFakeExecutables(t *testing.T) {
 				t.Fatal("dashboard model did not start a refresh")
 			}
 			model, _ = model.Update(refresh())
+			model, _ = model.Update(tea.WindowSizeMsg{Width: 120, Height: 32})
 
 			model, action := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
 			if action == nil {
-				t.Fatal("selected-copy key did not return a command")
+				captured, _ := os.ReadFile(filepath.Join(captureDirectory, "gh.txt"))
+				t.Fatalf(
+					"selected-copy key did not return a command after refresh:\n%s\ncaptured gh:\n%s",
+					model.View().Content,
+					captured,
+				)
 			}
 			model, _ = model.Update(action())
 
@@ -576,7 +627,7 @@ func TestRuntimeDepsWireConcretePackagesThroughFakeExecutables(t *testing.T) {
 	if programCalls != 1 {
 		t.Fatalf("dashboard program calls = %d, want 1", programCalls)
 	}
-	cached, err := (store.CacheStore{Path: paths.Cache}).Load()
+	cached, err := (store.CacheStore{Path: paths.Cache}).Load(selection)
 	if err != nil {
 		t.Fatalf("load refreshed cache: %v", err)
 	}
@@ -594,8 +645,14 @@ func TestRuntimeDepsWireConcretePackagesThroughFakeExecutables(t *testing.T) {
 			t.Fatalf("GitHub capture missing %q:\n%s", want, capturedCalls)
 		}
 	}
+	if got := strings.Count(capturedCalls, "\n--hostname\ngithub.com\n"); got != 4 {
+		t.Fatalf("GitHub hostname pins = %d, want 4 API calls despite GH_HOST:\n%s", got, capturedCalls)
+	}
 	if strings.Contains(strings.ToLower(capturedCalls), "mutation") {
 		t.Fatalf("GitHub capture contains a mutation:\n%s", capturedCalls)
+	}
+	if strings.Contains(capturedCalls, "\n-F\n") {
+		t.Fatalf("GitHub capture contains typed GraphQL fields:\n%s", capturedCalls)
 	}
 
 	clipboardCapture, err := os.ReadFile(filepath.Join(captureDirectory, "clipboard.txt"))
@@ -746,7 +803,7 @@ func TestRuntimeValidConfigSurfacesAuthenticationGuidanceOnInitialRefreshAndRetr
 		}},
 		FetchedAt: time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
 	}
-	if err := (store.CacheStore{Path: paths.Cache}).Save(cached); err != nil {
+	if err := (store.CacheStore{Path: paths.Cache}).Save(selection, cached); err != nil {
 		t.Fatalf("save integration cache: %v", err)
 	}
 
@@ -802,7 +859,7 @@ func TestRuntimeValidConfigSurfacesAuthenticationGuidanceOnInitialRefreshAndRetr
 	if err != nil {
 		t.Fatalf("read GitHub capture: %v", err)
 	}
-	if got := strings.Count(string(captured), "---\nauth\nstatus\n"); got != 2 {
+	if got := strings.Count(string(captured), "---\nauth\nstatus\n--hostname\ngithub.com\n"); got != 2 {
 		t.Fatalf("authentication checks = %d, want 2 initial/retry calls:\n%s", got, captured)
 	}
 	if strings.Contains(string(captured), "\napi\n") {
@@ -847,7 +904,10 @@ func assertCacheLoadFailure(t *testing.T, cacheErr error, wantWarning bool) {
 		loadConfig: func() (app.Selection, error) {
 			return selection, nil
 		},
-		loadCache: func() (app.Snapshot, error) {
+		loadCache: func(got app.Selection) (app.Snapshot, error) {
+			if !reflect.DeepEqual(got, selection) {
+				t.Fatalf("cache selection = %#v, want %#v", got, selection)
+			}
 			return app.Snapshot{}, cacheErr
 		},
 		runDashboard: func(_ context.Context, _ app.Selection, cached *app.Snapshot, warning error) error {
@@ -882,7 +942,7 @@ func panicRuntimeDeps(t *testing.T) runtimeDeps {
 			panicCall("loadConfig")
 			return app.Selection{}, nil
 		},
-		loadCache: func() (app.Snapshot, error) {
+		loadCache: func(app.Selection) (app.Snapshot, error) {
 			panicCall("loadCache")
 			return app.Snapshot{}, nil
 		},

@@ -59,7 +59,19 @@ case "$stdin $*" in
 		;;
 esac
 
-if [ "$#" -eq 2 ] && [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+if [ "$#" -eq 2 ] &&
+	[ "$1" = "auth" ] &&
+	[ "$2" = "status" ] &&
+	[ -n "${PRQ_TEST_GH_UNRELATED_AUTH_ERROR:-}" ]; then
+	printf '%s\n' "$PRQ_TEST_GH_UNRELATED_AUTH_ERROR" >&2
+	exit 1
+fi
+
+if [ "$#" -eq 4 ] &&
+	[ "$1" = "auth" ] &&
+	[ "$2" = "status" ] &&
+	[ "$3" = "--hostname" ] &&
+	[ "$4" = "github.com" ]; then
 	if [ -n "${PRQ_TEST_GH_AUTH_ERROR:-}" ]; then
 		printf '%s\n' "$PRQ_TEST_GH_AUTH_ERROR" >&2
 		exit 1
@@ -67,30 +79,38 @@ if [ "$#" -eq 2 ] && [ "$1" = "auth" ] && [ "$2" = "status" ]; then
 	exit 0
 fi
 
-if [ "$#" -lt 4 ] || [ "$1" != "api" ] || [ "$2" != "graphql" ] || [ "$3" != "-f" ]; then
+if [ "$#" -lt 6 ] ||
+	[ "$1" != "api" ] ||
+	[ "$2" != "graphql" ] ||
+	[ "$3" != "--hostname" ] ||
+	[ "$4" != "github.com" ] ||
+	[ "$5" != "-f" ]; then
 	exit 64
 fi
-case "$4" in
+case "$6" in
 	query=*) ;;
 	*) exit 64 ;;
 esac
+case " $* " in
+*" -F "*) exit 64 ;;
+esac
 
-if [ "$4" = "$current_viewer_query" ]; then
-	if [ "$#" -ne 4 ]; then
+if [ "$6" = "$current_viewer_query" ]; then
+	if [ "$#" -ne 6 ]; then
 		exit 64
 	fi
 	cat "$repository_root/internal/github/testdata/viewer.json"
-elif [ "$4" = "$viewer_organizations_query" ]; then
-	if [ "$#" -eq 4 ]; then
+elif [ "$6" = "$viewer_organizations_query" ]; then
+	if [ "$#" -eq 6 ]; then
 		cat "$repository_root/internal/github/testdata/organizations-page-1.json"
-	elif [ "$#" -eq 6 ] && [ "$5" = "-F" ] && [ "$6" = "cursor=organizations-cursor-1" ]; then
+	elif [ "$#" -eq 8 ] && [ "$7" = "-f" ] && [ "$8" = "cursor=organizations-cursor-1" ]; then
 		cat "$repository_root/internal/github/testdata/organizations-page-2.json"
 	else
 		exit 64
 	fi
-elif [ "$4" = "$organization_repositories_query" ]; then
-	if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
-		case "$6" in
+elif [ "$6" = "$organization_repositories_query" ]; then
+	if [ "$#" -eq 8 ] && [ "$7" = "-f" ]; then
+		case "$8" in
 			organization=?*)
 				cat "$repository_root/internal/github/testdata/repositories.json"
 				;;
@@ -98,8 +118,8 @@ elif [ "$4" = "$organization_repositories_query" ]; then
 				exit 64
 				;;
 		esac
-	elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=repositories-cursor-1" ]; then
-		case "$6" in
+	elif [ "$#" -eq 10 ] && [ "$7" = "-f" ] && [ "$9" = "-f" ] && [ "${10}" = "cursor=repositories-cursor-1" ]; then
+		case "$8" in
 			organization=?*) ;;
 			*) exit 64 ;;
 		esac
@@ -125,9 +145,9 @@ EOF
 	else
 		exit 64
 	fi
-elif [ "$4" = "$open_pull_requests_query" ]; then
-	if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
-		case "$6" in
+elif [ "$6" = "$open_pull_requests_query" ]; then
+	if [ "$#" -eq 8 ] && [ "$7" = "-f" ]; then
+		case "$8" in
 			search=?*)
 				cat "$repository_root/internal/github/testdata/pull-requests-page-1.json"
 				;;
@@ -135,8 +155,8 @@ elif [ "$4" = "$open_pull_requests_query" ]; then
 				exit 64
 				;;
 		esac
-	elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=pull-requests-cursor-1" ]; then
-		case "$6" in
+	elif [ "$#" -eq 10 ] && [ "$7" = "-f" ] && [ "$9" = "-f" ] && [ "${10}" = "cursor=pull-requests-cursor-1" ]; then
+		case "$8" in
 			search=?*) ;;
 			*) exit 64 ;;
 		esac
