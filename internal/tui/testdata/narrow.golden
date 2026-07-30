@@ -1,0 +1,32 @@
+PRQ • 2 pull requests • refreshing • last updated <age>
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ PULL REQUESTS                                                                │
+│ › acme/api #184                                                              │
+│ Fix session refresh                                                          │
+│ Refreshes expired sessions without forcing a new login, dropping cookies, o… │
+│ review: approved                                                             │
+│ checks: passing • <age>                                                     │
+│ acme/web #92 DRAFT                                                           │
+│ Add invoice filters                                                          │
+│ No description                                                               │
+│ review: changes requested                                                    │
+│ checks: failing • <age>                                                     │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ DETAIL                                                                       │
+│ acme/api #184                                                                │
+│ Fix session refresh                                                          │
+│ State: open                                                                  │
+│ Created: 2026-07-20 12:00 UTC                                                │
+│ Updated: 2026-07-29 12:00 UTC                                                │
+│ Review: approved                                                             │
+│ Checks: passing                                                              │
+│ https://github.com/acme/api/pull/184                                         │
+│ Refreshes expired sessions without forcing a new login, dropping cookies, or │
+│ losing unsaved work.                                                         │
+│                                                                              │
+│ ## Notes                                                                     │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+↑/↓ move Tab focus o open c copy C all r refresh ? help q quit
