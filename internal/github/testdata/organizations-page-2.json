@@ -1,0 +1,17 @@
+{
+  "data": {
+    "viewer": {
+      "organizations": {
+        "nodes": [
+          {
+            "login": "BetaWorks"
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}

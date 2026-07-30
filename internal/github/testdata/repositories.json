@@ -1,0 +1,20 @@
+{
+  "data": {
+    "organization": {
+      "repositories": {
+        "nodes": [
+          {
+            "nameWithOwner": "Acme/Zulu"
+          },
+          {
+            "nameWithOwner": "acme/alpha"
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "repositories-cursor-1"
+        }
+      }
+    }
+  }
+}

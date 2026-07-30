@@ -1,0 +1,20 @@
+{
+  "data": {
+    "viewer": {
+      "organizations": {
+        "nodes": [
+          {
+            "login": "Zoo-Systems"
+          },
+          {
+            "login": "alpha-labs"
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "organizations-cursor-1"
+        }
+      }
+    }
+  }
+}
