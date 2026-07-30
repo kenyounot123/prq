@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -84,6 +85,96 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 			}
 			if !tt.stacked && detailLine != listLine {
 				t.Fatalf("wide detail line %d is not beside list line %d", detailLine, listLine)
+			}
+
+			normalized := normalizeRender(raw)
+			goldenPath := filepath.Join("testdata", tt.goldenFile)
+			if os.Getenv("UPDATE_GOLDEN") == "1" {
+				if err := os.WriteFile(goldenPath, []byte(normalized), 0o644); err != nil {
+					t.Fatalf("write golden: %v", err)
+				}
+			}
+			want, err := os.ReadFile(goldenPath)
+			if err != nil {
+				t.Fatalf("read golden: %v", err)
+			}
+			if normalized != string(want) {
+				t.Fatalf("render differs from %s\n--- got ---\n%s\n--- want ---\n%s", tt.goldenFile, normalized, want)
+			}
+		})
+	}
+}
+
+func TestRenderRefreshAndHelpStates(t *testing.T) {
+	tests := []struct {
+		name       string
+		goldenFile string
+		model      func() Model
+		required   []string
+	}{
+		{
+			name:       "stale cached data",
+			goldenFile: "stale.golden",
+			model: func() Model {
+				model := renderTestModel()
+				return updateModel(t, model, refreshDoneMsg{err: errors.New("network unavailable")})
+			},
+			required: []string{
+				"2 pull requests",
+				"stale",
+				"last updated",
+				"acme/api #184",
+				"Refresh failed: network unavailable",
+			},
+		},
+		{
+			name:       "first refresh failure",
+			goldenFile: "refresh-error.golden",
+			model: func() Model {
+				model := NewModel(
+					context.Background(),
+					app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+					nil,
+					nil,
+					testDependencies(),
+				)
+				return updateModel(t, model, refreshDoneMsg{err: errors.New("network unavailable")})
+			},
+			required: []string{
+				"0 pull requests",
+				"error",
+				"last updated never",
+				"Refresh failed: network unavailable",
+				"Press r to retry or q to quit.",
+			},
+		},
+		{
+			name:       "expanded help",
+			goldenFile: "help.golden",
+			model: func() Model {
+				model := renderTestModel()
+				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+			},
+			required: []string{
+				"↑/↓ move or scroll",
+				"Tab switch focus",
+				"c copy URL",
+				"C copy all as Slack",
+				"? compact help",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := tt.model()
+			model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+			raw := model.View().Content
+			stripped := ansi.Strip(raw)
+			for _, required := range tt.required {
+				if !strings.Contains(stripped, required) {
+					t.Errorf("render missing %q", required)
+				}
 			}
 
 			normalized := normalizeRender(raw)

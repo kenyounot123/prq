@@ -68,6 +68,8 @@ func (m Model) renderHeader() string {
 		state = "stale"
 	case m.loading:
 		state = "loading"
+	case m.refreshErr != nil:
+		state = "error"
 	}
 	lastUpdated := "never"
 	if !m.fetchedAt.IsZero() {
@@ -91,7 +93,7 @@ func (m Model) renderListPane(width, height int) string {
 	switch {
 	case m.loading && len(m.pullRequests) == 0:
 		lines = append(lines, "", "Loading pull requests…")
-	case m.refreshErr != nil && len(m.pullRequests) == 0:
+	case m.refreshErr != nil && !m.stale:
 		lines = append(
 			lines,
 			"",
@@ -176,10 +178,10 @@ func (m Model) renderStatus() string {
 	status := m.statusMessage
 	switch {
 	case status != "":
+	case m.refreshErr != nil && m.stale:
+		status = "Refresh failed: " + m.refreshErr.Error()
 	case m.cacheWarning != nil:
 		status = "Warning: " + m.cacheWarning.Error()
-	case m.refreshErr != nil && len(m.pullRequests) > 0:
-		status = "Refresh failed: " + m.refreshErr.Error()
 	}
 	return lipgloss.NewStyle().
 		Foreground(mutedColor).

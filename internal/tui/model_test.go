@@ -481,6 +481,425 @@ func TestNewModelTracksCacheWarningAndStartsWithCompactHelp(t *testing.T) {
 	}
 }
 
+func TestActionCopySelectedURL(t *testing.T) {
+	first := testPullRequest("PR_one", "acme/api", 1)
+	second := testPullRequest("PR_two", "acme/web", 2)
+	copied := ""
+	deps := testDependencies()
+	deps.Copy = func(_ context.Context, text string) error {
+		copied = text
+		return nil
+	}
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}},
+		snapshotPointer(testSnapshot(first, second)),
+		nil,
+		deps,
+	)
+	model.selected = 1
+
+	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
+	if cmd == nil {
+		t.Fatal("copy key returned nil command")
+	}
+	if copied != "" {
+		t.Fatalf("copy ran during Update with %q", copied)
+	}
+	next, _ = next.Update(cmd())
+	got := next.(Model)
+
+	if copied != second.URL {
+		t.Fatalf("copied text = %q, want selected URL %q", copied, second.URL)
+	}
+	if got.statusMessage != "Copied pull request URL." {
+		t.Fatalf("copy status = %q, want success confirmation", got.statusMessage)
+	}
+}
+
+func TestActionCopyAllUsesVisibleDashboardOrder(t *testing.T) {
+	first := testPullRequest("PR_one", "acme/web", 2)
+	first.Title = "First visible"
+	second := testPullRequest("PR_two", "acme/api", 1)
+	second.Title = "Second visible"
+	copied := ""
+	deps := testDependencies()
+	deps.Copy = func(_ context.Context, text string) error {
+		copied = text
+		return nil
+	}
+	pullRequests := []app.PullRequest{first, second}
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}},
+		snapshotPointer(testSnapshot(pullRequests...)),
+		nil,
+		deps,
+	)
+
+	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "C", Code: 'C'}))
+	if cmd == nil {
+		t.Fatal("copy-all key returned nil command")
+	}
+	next, _ = next.Update(cmd())
+	got := next.(Model)
+
+	want := app.FormatSlackList(pullRequests)
+	if copied != want {
+		t.Fatalf("copied Slack list = %q, want %q", copied, want)
+	}
+	if got.statusMessage != "Copied 2 pull requests." {
+		t.Fatalf("copy-all status = %q, want success confirmation", got.statusMessage)
+	}
+}
+
+func TestActionOpenSelectedURL(t *testing.T) {
+	first := testPullRequest("PR_one", "acme/api", 1)
+	second := testPullRequest("PR_two", "acme/web", 2)
+	opened := ""
+	deps := testDependencies()
+	deps.Open = func(_ context.Context, rawURL string) error {
+		opened = rawURL
+		return nil
+	}
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}},
+		snapshotPointer(testSnapshot(first, second)),
+		nil,
+		deps,
+	)
+	model.selected = 1
+
+	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "o", Code: 'o'}))
+	if cmd == nil {
+		t.Fatal("open key returned nil command")
+	}
+	if opened != "" {
+		t.Fatalf("open ran during Update with %q", opened)
+	}
+	next, _ = next.Update(cmd())
+	got := next.(Model)
+
+	if opened != second.URL {
+		t.Fatalf("opened URL = %q, want selected URL %q", opened, second.URL)
+	}
+	if got.statusMessage != "Opened pull request." {
+		t.Fatalf("open status = %q, want success confirmation", got.statusMessage)
+	}
+}
+
+func TestActionFailuresAppearInStatusLine(t *testing.T) {
+	actionErr := errors.New("helper unavailable")
+	pullRequest := testPullRequest("PR_one", "acme/api", 1)
+	tests := []struct {
+		name       string
+		key        tea.Key
+		configure  func(*Dependencies)
+		wantStatus string
+	}{
+		{
+			name: "copy selected",
+			key:  tea.Key{Text: "c", Code: 'c'},
+			configure: func(deps *Dependencies) {
+				deps.Copy = func(context.Context, string) error { return actionErr }
+			},
+			wantStatus: "Copy failed: helper unavailable",
+		},
+		{
+			name: "copy all",
+			key:  tea.Key{Text: "C", Code: 'C'},
+			configure: func(deps *Dependencies) {
+				deps.Copy = func(context.Context, string) error { return actionErr }
+			},
+			wantStatus: "Copy failed: helper unavailable",
+		},
+		{
+			name: "open",
+			key:  tea.Key{Text: "o", Code: 'o'},
+			configure: func(deps *Dependencies) {
+				deps.Open = func(context.Context, string) error { return actionErr }
+			},
+			wantStatus: "Open failed: helper unavailable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			deps := testDependencies()
+			tt.configure(&deps)
+			model := NewModel(
+				context.Background(),
+				app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+				snapshotPointer(testSnapshot(pullRequest)),
+				nil,
+				deps,
+			)
+
+			next, cmd := model.Update(tea.KeyPressMsg(tt.key))
+			if cmd == nil {
+				t.Fatal("action key returned nil command")
+			}
+			next, _ = next.Update(cmd())
+			if got := next.(Model).statusMessage; got != tt.wantStatus {
+				t.Fatalf("status = %q, want %q", got, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestActionKeysAreSafeNoOpsWithoutPullRequests(t *testing.T) {
+	calls := 0
+	deps := testDependencies()
+	deps.Copy = func(context.Context, string) error {
+		calls++
+		return nil
+	}
+	deps.Open = func(context.Context, string) error {
+		calls++
+		return nil
+	}
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot()),
+		nil,
+		deps,
+	)
+
+	for _, key := range []tea.Key{
+		{Text: "c", Code: 'c'},
+		{Text: "C", Code: 'C'},
+		{Text: "o", Code: 'o'},
+	} {
+		next, cmd := model.Update(tea.KeyPressMsg(key))
+		if cmd != nil {
+			t.Fatalf("empty-list action %q returned a command", key.Text)
+		}
+		model = next.(Model)
+		if model.statusMessage != "No pull request selected." {
+			t.Fatalf("empty-list action %q status = %q", key.Text, model.statusMessage)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("empty-list actions called dependencies %d times, want 0", calls)
+	}
+}
+
+func TestRefreshKeyStartsOneRefreshAndSuppressesRepeatedKey(t *testing.T) {
+	refreshed := testSnapshot(testPullRequest("PR_new", "acme/api", 2))
+	calls := 0
+	deps := testDependencies()
+	deps.Refresh = func(context.Context, app.Selection) (app.RefreshResult, error) {
+		calls++
+		return app.RefreshResult{Snapshot: refreshed}, nil
+	}
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot(testPullRequest("PR_old", "acme/api", 1))),
+		nil,
+		deps,
+	)
+	model = updateModel(t, model, refreshDoneMsg{
+		result: app.RefreshResult{Snapshot: testSnapshot(testPullRequest("PR_old", "acme/api", 1))},
+	})
+
+	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "r", Code: 'r'}))
+	if cmd == nil {
+		t.Fatal("manual refresh returned nil command")
+	}
+	active := next.(Model)
+	if !active.refreshing {
+		t.Fatal("manual refresh did not set refreshing state")
+	}
+	if calls != 0 {
+		t.Fatalf("refresh ran during Update %d times, want 0", calls)
+	}
+	suppressed, duplicateCmd := active.Update(tea.KeyPressMsg(tea.Key{Text: "r", Code: 'r'}))
+	if duplicateCmd != nil {
+		t.Fatal("repeated manual refresh returned a command")
+	}
+	if !suppressed.(Model).refreshing {
+		t.Fatal("repeated manual refresh cleared refreshing state")
+	}
+
+	next, _ = active.Update(cmd())
+	got := next.(Model)
+	if calls != 1 {
+		t.Fatalf("refresh calls = %d, want 1", calls)
+	}
+	if got.refreshing {
+		t.Fatal("completed manual refresh remains active")
+	}
+	if len(got.pullRequests) != 1 || got.pullRequests[0].ID != "PR_new" {
+		t.Fatalf("visible pull requests after refresh = %#v, want fresh result", got.pullRequests)
+	}
+}
+
+func TestRefreshFailurePreservesCachedDataAndMarksItStale(t *testing.T) {
+	cached := testSnapshot(testPullRequest("PR_cached", "acme/api", 1))
+	refreshErr := errors.New("network unavailable")
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		&cached,
+		nil,
+		testDependencies(),
+	)
+	model.width = 120
+
+	next, _ := model.Update(refreshDoneMsg{err: refreshErr})
+	got := next.(Model)
+
+	if len(got.pullRequests) != 1 || got.pullRequests[0].ID != "PR_cached" {
+		t.Fatalf("cached pull requests changed after failure: %#v", got.pullRequests)
+	}
+	if !got.fetchedAt.Equal(cached.FetchedAt) {
+		t.Fatalf("last success = %v, want %v", got.fetchedAt, cached.FetchedAt)
+	}
+	if !got.stale {
+		t.Fatal("failed cached refresh is not marked stale")
+	}
+	if status := strings.TrimSpace(ansi.Strip(got.renderStatus())); status != "Refresh failed: network unavailable" {
+		t.Fatalf("failure status = %q", status)
+	}
+}
+
+func TestRefreshFailureTreatsEmptyCachedSnapshotAsStaleData(t *testing.T) {
+	cached := testSnapshot()
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		&cached,
+		nil,
+		testDependencies(),
+	)
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+
+	next, _ := model.Update(refreshDoneMsg{err: errors.New("network unavailable")})
+	got := next.(Model)
+	rendered := ansi.Strip(got.View().Content)
+
+	if !got.stale {
+		t.Fatal("failed refresh after empty cached snapshot is not marked stale")
+	}
+	if !got.fetchedAt.Equal(cached.FetchedAt) {
+		t.Fatalf("last success = %v, want %v", got.fetchedAt, cached.FetchedAt)
+	}
+	if !strings.Contains(rendered, "No open pull requests.") {
+		t.Fatalf("stale empty render does not preserve successful empty result:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "Press r to retry or q to quit.") {
+		t.Fatalf("stale empty render shows first-refresh error state:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "Refresh failed: network unavailable") {
+		t.Fatalf("stale empty render does not show refresh failure:\n%s", rendered)
+	}
+}
+
+func TestRefreshCompletionSupersedesEarlierActionStatus(t *testing.T) {
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot(testPullRequest("PR_cached", "acme/api", 1))),
+		nil,
+		testDependencies(),
+	)
+	model.statusMessage = "Copied pull request URL."
+
+	t.Run("failure", func(t *testing.T) {
+		next, _ := model.Update(refreshDoneMsg{err: errors.New("network unavailable")})
+		got := next.(Model)
+		if got.statusMessage != "" {
+			t.Fatalf("status after refresh failure = %q, want transient action status cleared", got.statusMessage)
+		}
+	})
+
+	t.Run("cache warning", func(t *testing.T) {
+		next, _ := model.Update(refreshDoneMsg{
+			result: app.RefreshResult{
+				Snapshot:     testSnapshot(testPullRequest("PR_fresh", "acme/api", 2)),
+				CacheWarning: errors.New("disk full"),
+			},
+		})
+		got := next.(Model)
+		if got.statusMessage != "" {
+			t.Fatalf("status after refresh warning = %q, want transient action status cleared", got.statusMessage)
+		}
+	})
+}
+
+func TestRefreshSuccessReplacesCacheWarningWithCurrentWarning(t *testing.T) {
+	oldWarning := errors.New("old cache unreadable")
+	newWarning := errors.New("disk full")
+	fresh := testSnapshot(testPullRequest("PR_fresh", "acme/api", 2))
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		nil,
+		oldWarning,
+		testDependencies(),
+	)
+	model.width = 120
+
+	next, _ := model.Update(refreshDoneMsg{
+		result: app.RefreshResult{Snapshot: fresh, CacheWarning: newWarning},
+	})
+	got := next.(Model)
+
+	if len(got.pullRequests) != 1 || got.pullRequests[0].ID != "PR_fresh" {
+		t.Fatalf("fresh pull requests = %#v", got.pullRequests)
+	}
+	if !errors.Is(got.cacheWarning, newWarning) {
+		t.Fatalf("cache warning = %v, want %v", got.cacheWarning, newWarning)
+	}
+	if status := strings.TrimSpace(ansi.Strip(got.renderStatus())); status != "Warning: disk full" {
+		t.Fatalf("warning status = %q", status)
+	}
+}
+
+func TestHelpKeyTogglesExpandedHelp(t *testing.T) {
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot()),
+		nil,
+		testDependencies(),
+	)
+	model.width = 120
+
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+	if !model.showHelp {
+		t.Fatal("help key did not expand help")
+	}
+	if footer := ansi.Strip(model.renderFooter()); !strings.Contains(footer, "copy all as Slack") {
+		t.Fatalf("expanded footer = %q", footer)
+	}
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+	if model.showHelp {
+		t.Fatal("second help key did not restore compact help")
+	}
+}
+
+func TestQuitKeyReturnsTeaQuit(t *testing.T) {
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot()),
+		nil,
+		testDependencies(),
+	)
+
+	_, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "q", Code: 'q'}))
+	if cmd == nil {
+		t.Fatal("quit key returned nil command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("quit command returned %T, want tea.QuitMsg", cmd())
+	}
+}
+
 func updateModel(t *testing.T, model Model, msg tea.Msg) Model {
 	t.Helper()
 	next, _ := model.Update(msg)
@@ -503,6 +922,10 @@ func testSnapshot(pullRequests ...app.PullRequest) app.Snapshot {
 		PullRequests: pullRequests,
 		FetchedAt:    time.Date(2026, 7, 30, 15, 0, 0, 0, time.UTC),
 	}
+}
+
+func snapshotPointer(snapshot app.Snapshot) *app.Snapshot {
+	return &snapshot
 }
 
 func testPullRequest(id, repository string, number int) app.PullRequest {

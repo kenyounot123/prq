@@ -1,0 +1,32 @@
+PRQ • 2 pull requests • refreshing • last updated <age>
+╭─────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────╮
+│ PULL REQUESTS                               │ │ DETAIL                                                               │
+│ › acme/api #184                             │ │ acme/api #184                                                        │
+│ Fix session refresh                         │ │ Fix session refresh                                                  │
+│ Refreshes expired sessions without forcing… │ │ State: open                                                          │
+│ review: approved                            │ │ Created: 2026-07-20 12:00 UTC                                        │
+│ checks: passing • <age>                    │ │ Updated: 2026-07-29 12:00 UTC                                        │
+│ acme/web #92 DRAFT                          │ │ Review: approved                                                     │
+│ Add invoice filters                         │ │ Checks: passing                                                      │
+│ No description                              │ │ https://github.com/acme/api/pull/184                                 │
+│ review: changes requested                   │ │ Refreshes expired sessions without forcing a new login, dropping     │
+│ checks: failing • <age>                    │ │ cookies, or losing unsaved work.                                     │
+│                                             │ │                                                                      │
+│                                             │ │ ## Notes                                                             │
+│                                             │ │ Preserves Markdown source.                                           │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+│                                             │ │                                                                      │
+╰─────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────╯
+
+↑/↓ move or scroll Tab switch focus o open c copy URL C copy all as Slack r refresh ? compact help q quit

@@ -32,8 +32,9 @@ type refreshDoneMsg struct {
 }
 
 type actionDoneMsg struct {
-	action string
-	err    error
+	action  string
+	success string
+	err     error
 }
 
 type focusMode int
@@ -88,10 +89,7 @@ func NewModel(
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		result, err := m.deps.Refresh(m.ctx, m.selection)
-		return refreshDoneMsg{result: result, err: err}
-	}
+	return m.refreshCmd()
 }
 
 func (m *Model) syncDetailViewport() {
