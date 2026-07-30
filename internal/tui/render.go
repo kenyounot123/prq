@@ -36,7 +36,11 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) render() string {
-	listWidth, detailWidth, listHeight, detailHeight := paneDimensions(m.width, m.height)
+	listWidth, detailWidth, listHeight, detailHeight := paneDimensions(
+		m.width,
+		m.height,
+		m.chromeRows(),
+	)
 	listPane := m.renderListPane(listWidth, listHeight)
 	detailPane := m.renderDetailPane(detailWidth, detailHeight)
 
@@ -190,11 +194,56 @@ func (m Model) renderStatus() string {
 }
 
 func (m Model) renderFooter() string {
-	help := "↑/↓ move  Tab focus  o open  c copy  C all  r refresh  ? help  q quit"
+	return mutedStyle.
+		Width(max(0, m.width)).
+		Render(ansi.Wordwrap(m.footerText(), m.width, ""))
+}
+
+func (m Model) footerText() string {
+	help := "↑/↓ move Tab focus o open c copy C all r refresh ? help q quit"
 	if m.showHelp {
-		help = "↑/↓ move or scroll  Tab switch focus  o open  c copy URL  C copy all as Slack  r refresh  ? compact help  q quit"
+		help = wrapBindings([]string{
+			"↑/↓ move or scroll",
+			"Tab switch focus",
+			"o open",
+			"c copy URL",
+			"C copy all as Slack",
+			"r refresh",
+			"? compact help",
+			"q quit",
+		}, m.width)
 	}
-	return mutedStyle.Width(max(0, m.width)).Render(truncateLine(help, m.width))
+	return help
+}
+
+func wrapBindings(bindings []string, width int) string {
+	if width <= 0 {
+		return strings.Join(bindings, "  ")
+	}
+
+	var wrapped strings.Builder
+	lineWidth := 0
+	for _, binding := range bindings {
+		bindingWidth := ansi.StringWidth(binding)
+		if lineWidth > 0 && lineWidth+1+bindingWidth > width {
+			wrapped.WriteByte('\n')
+			lineWidth = 0
+		}
+		if lineWidth > 0 {
+			wrapped.WriteByte(' ')
+			lineWidth++
+		}
+		wrapped.WriteString(binding)
+		lineWidth += bindingWidth
+	}
+	return wrapped.String()
+}
+
+func footerLineCount(text string, width int) int {
+	if width <= 0 {
+		return 1
+	}
+	return strings.Count(ansi.Wordwrap(text, width, ""), "\n") + 1
 }
 
 func (m Model) now() time.Time {

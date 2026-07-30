@@ -11,6 +11,7 @@ import (
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshDoneMsg:
+		m.generation++
 		m.statusMessage = ""
 		if msg.err == nil {
 			selectedID := ""
@@ -44,6 +45,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.refreshing = false
 	case actionDoneMsg:
+		if msg.generation != m.generation {
+			return m, nil
+		}
 		if msg.err == nil {
 			m.statusMessage = msg.success
 		} else {
@@ -57,6 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
+			m.resize(m.width, m.height)
 			return m, nil
 		case "r":
 			if m.refreshing {
@@ -136,12 +141,18 @@ func (m Model) copyCmd(text, success string) tea.Cmd {
 	return func() tea.Msg {
 		if m.deps.Copy == nil {
 			return actionDoneMsg{
-				action: "Copy",
-				err:    fmt.Errorf("clipboard dependency is unavailable"),
+				generation: m.generation,
+				action:     "Copy",
+				err:        fmt.Errorf("clipboard dependency is unavailable"),
 			}
 		}
 		err := m.deps.Copy(m.ctx, text)
-		return actionDoneMsg{action: "Copy", success: success, err: err}
+		return actionDoneMsg{
+			generation: m.generation,
+			action:     "Copy",
+			success:    success,
+			err:        err,
+		}
 	}
 }
 
@@ -149,11 +160,17 @@ func (m Model) openCmd(rawURL string) tea.Cmd {
 	return func() tea.Msg {
 		if m.deps.Open == nil {
 			return actionDoneMsg{
-				action: "Open",
-				err:    fmt.Errorf("browser dependency is unavailable"),
+				generation: m.generation,
+				action:     "Open",
+				err:        fmt.Errorf("browser dependency is unavailable"),
 			}
 		}
 		err := m.deps.Open(m.ctx, rawURL)
-		return actionDoneMsg{action: "Open", success: "Opened pull request.", err: err}
+		return actionDoneMsg{
+			generation: m.generation,
+			action:     "Open",
+			success:    "Opened pull request.",
+			err:        err,
+		}
 	}
 }

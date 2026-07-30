@@ -32,9 +32,10 @@ type refreshDoneMsg struct {
 }
 
 type actionDoneMsg struct {
-	action  string
-	success string
-	err     error
+	generation uint64
+	action     string
+	success    string
+	err        error
 }
 
 type focusMode int
@@ -60,6 +61,7 @@ type Model struct {
 	height         int
 	showHelp       bool
 	statusMessage  string
+	generation     uint64
 	detailViewport viewport.Model
 	deps           Dependencies
 }
@@ -108,14 +110,18 @@ func (m *Model) syncDetailViewport() {
 func (m *Model) resize(width, height int) {
 	m.width = max(0, width)
 	m.height = max(0, height)
-	_, detailWidth, _, detailHeight := paneDimensions(m.width, m.height)
+	_, detailWidth, _, detailHeight := paneDimensions(m.width, m.height, m.chromeRows())
 	m.detailViewport.SetWidth(max(0, detailWidth-paneFrameWidth))
 	m.detailViewport.SetHeight(max(0, detailHeight-paneBorderHeight-detailMetadataRows))
 	m.syncDetailViewport()
 }
 
-func paneDimensions(width, height int) (listWidth, detailWidth, listHeight, detailHeight int) {
-	paneHeight := max(0, height-dashboardChromeRows)
+func (m Model) chromeRows() int {
+	return dashboardChromeRows + max(0, footerLineCount(m.footerText(), m.width)-1)
+}
+
+func paneDimensions(width, height, chromeRows int) (listWidth, detailWidth, listHeight, detailHeight int) {
+	paneHeight := max(0, height-chromeRows)
 	if width >= wideLayoutMin {
 		availableWidth := max(0, width-1)
 		listWidth = availableWidth * 40 / 100

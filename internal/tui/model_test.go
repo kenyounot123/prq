@@ -830,6 +830,86 @@ func TestRefreshCompletionSupersedesEarlierActionStatus(t *testing.T) {
 	})
 }
 
+func TestRefreshOutcomeWinsOverEarlierActionCompletionInBothMessageOrders(t *testing.T) {
+	tests := []struct {
+		name       string
+		completion tea.Msg
+		wantStatus string
+	}{
+		{
+			name:       "failure",
+			completion: refreshDoneMsg{err: errors.New("network unavailable")},
+			wantStatus: "Refresh failed: network unavailable",
+		},
+		{
+			name: "cache warning",
+			completion: refreshDoneMsg{
+				result: app.RefreshResult{
+					Snapshot:     testSnapshot(testPullRequest("PR_fresh", "acme/api", 2)),
+					CacheWarning: errors.New("disk full"),
+				},
+			},
+			wantStatus: "Warning: disk full",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			newModel := func() Model {
+				deps := testDependencies()
+				deps.Copy = func(context.Context, string) error { return nil }
+				model := NewModel(
+					context.Background(),
+					app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+					snapshotPointer(testSnapshot(testPullRequest("PR_cached", "acme/api", 1))),
+					nil,
+					deps,
+				)
+				model.width = 120
+				return model
+			}
+			startCopy := func(t *testing.T, model Model) (Model, tea.Msg) {
+				t.Helper()
+				next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
+				if cmd == nil {
+					t.Fatal("copy key returned nil command")
+				}
+				return next.(Model), cmd()
+			}
+			assertRefreshStatus := func(t *testing.T, model Model) {
+				t.Helper()
+				status := strings.TrimSpace(ansi.Strip(model.renderStatus()))
+				if status != tt.wantStatus {
+					t.Fatalf("status = %q, want refresh outcome %q", status, tt.wantStatus)
+				}
+			}
+
+			t.Run("action completion arrives first", func(t *testing.T) {
+				started, actionMsg := startCopy(t, newModel())
+				actionFirst := updateModel(t, started, actionMsg)
+				refreshLast := updateModel(t, actionFirst, tt.completion)
+				assertRefreshStatus(t, refreshLast)
+			})
+
+			t.Run("refresh completion arrives first", func(t *testing.T) {
+				started, actionMsg := startCopy(t, newModel())
+				refreshFirst := updateModel(t, started, tt.completion)
+				actionLast := updateModel(t, refreshFirst, actionMsg)
+				assertRefreshStatus(t, actionLast)
+
+				afterRefresh, currentActionMsg := startCopy(t, refreshFirst)
+				currentAction := updateModel(t, afterRefresh, currentActionMsg)
+				if currentAction.statusMessage != "Copied pull request URL." {
+					t.Fatalf(
+						"action started after refresh status = %q, want normal confirmation",
+						currentAction.statusMessage,
+					)
+				}
+			})
+		})
+	}
+}
+
 func TestRefreshSuccessReplacesCacheWarningWithCurrentWarning(t *testing.T) {
 	oldWarning := errors.New("old cache unreadable")
 	newWarning := errors.New("disk full")

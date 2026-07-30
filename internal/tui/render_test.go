@@ -109,12 +109,14 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 	tests := []struct {
 		name       string
 		goldenFile string
+		width      int
 		model      func() Model
 		required   []string
 	}{
 		{
 			name:       "stale cached data",
 			goldenFile: "stale.golden",
+			width:      120,
 			model: func() Model {
 				model := renderTestModel()
 				return updateModel(t, model, refreshDoneMsg{err: errors.New("network unavailable")})
@@ -130,6 +132,7 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 		{
 			name:       "first refresh failure",
 			goldenFile: "refresh-error.golden",
+			width:      120,
 			model: func() Model {
 				model := NewModel(
 					context.Background(),
@@ -151,6 +154,7 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 		{
 			name:       "expanded help",
 			goldenFile: "help.golden",
+			width:      120,
 			model: func() Model {
 				model := renderTestModel()
 				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
@@ -158,9 +162,31 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 			required: []string{
 				"↑/↓ move or scroll",
 				"Tab switch focus",
+				"o open",
 				"c copy URL",
 				"C copy all as Slack",
+				"r refresh",
 				"? compact help",
+				"q quit",
+			},
+		},
+		{
+			name:       "expanded help narrow",
+			goldenFile: "help-narrow.golden",
+			width:      80,
+			model: func() Model {
+				model := renderTestModel()
+				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+			},
+			required: []string{
+				"↑/↓ move or scroll",
+				"Tab switch focus",
+				"o open",
+				"c copy URL",
+				"C copy all as Slack",
+				"r refresh",
+				"? compact help",
+				"q quit",
 			},
 		},
 	}
@@ -168,12 +194,21 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := tt.model()
-			model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+			model = updateModel(t, model, tea.WindowSizeMsg{Width: tt.width, Height: 32})
 			raw := model.View().Content
 			stripped := ansi.Strip(raw)
 			for _, required := range tt.required {
 				if !strings.Contains(stripped, required) {
 					t.Errorf("render missing %q", required)
+				}
+			}
+			lines := strings.Split(strings.TrimSuffix(stripped, "\n"), "\n")
+			if len(lines) != 32 {
+				t.Errorf("render height = %d rows, want 32", len(lines))
+			}
+			for index, line := range lines {
+				if got := ansi.StringWidth(line); got != tt.width {
+					t.Errorf("line %d width = %d, want %d", index+1, got, tt.width)
 				}
 			}
 
