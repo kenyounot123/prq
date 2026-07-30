@@ -116,6 +116,13 @@ func (m *Model) resize(width, height int) {
 	m.syncDetailViewport()
 }
 
+func (m *Model) resizeDetailViewportHeight() {
+	_, _, _, detailHeight := paneDimensions(m.width, m.height, m.chromeRows())
+	offset := m.detailViewport.YOffset()
+	m.detailViewport.SetHeight(max(0, detailHeight-paneBorderHeight-detailMetadataRows))
+	m.detailViewport.SetYOffset(offset)
+}
+
 func (m Model) chromeRows() int {
 	return dashboardChromeRows + max(0, footerLineCount(m.footerText(), m.width)-1)
 }

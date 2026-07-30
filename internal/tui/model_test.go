@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -959,6 +960,48 @@ func TestHelpKeyTogglesExpandedHelp(t *testing.T) {
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
 	if model.showHelp {
 		t.Fatal("second help key did not restore compact help")
+	}
+}
+
+func TestHelpTogglePreservesScrolledDetailPosition(t *testing.T) {
+	pullRequest := testPullRequest("PR_one", "acme/api", 1)
+	bodyLines := make([]string, 24)
+	for index := range bodyLines {
+		bodyLines[index] = fmt.Sprintf("detail line %02d", index+1)
+	}
+	pullRequest.Body = strings.Join(bodyLines, "\n")
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		snapshotPointer(testSnapshot(pullRequest)),
+		nil,
+		testDependencies(),
+	)
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
+	model.focus = detailFocus
+	for range 5 {
+		model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	}
+	scrolledOffset := model.detailViewport.YOffset()
+	if scrolledOffset == 0 {
+		t.Fatal("test setup did not scroll the detail viewport")
+	}
+	compactHeight := model.detailViewport.Height()
+
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+	if got := model.detailViewport.YOffset(); got != scrolledOffset {
+		t.Fatalf("offset after expanding help = %d, want %d", got, scrolledOffset)
+	}
+	if got := model.detailViewport.Height(); got != compactHeight-1 {
+		t.Fatalf("height after expanding help = %d, want %d", got, compactHeight-1)
+	}
+
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+	if got := model.detailViewport.YOffset(); got != scrolledOffset {
+		t.Fatalf("offset after compacting help = %d, want %d", got, scrolledOffset)
+	}
+	if got := model.detailViewport.Height(); got != compactHeight {
+		t.Fatalf("height after compacting help = %d, want %d", got, compactHeight)
 	}
 }
 

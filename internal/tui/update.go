@@ -61,7 +61,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
-			m.resize(m.width, m.height)
+			m.resizeDetailViewportHeight()
 			return m, nil
 		case "r":
 			if m.refreshing {
