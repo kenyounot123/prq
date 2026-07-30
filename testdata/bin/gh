@@ -1,0 +1,116 @@
+#!/bin/sh
+set -eu
+
+script_dir=$(CDPATH= cd -- "${0%/*}" && pwd)
+repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
+stdin=$(cat)
+
+if [ -n "${PRQ_TEST_CAPTURE_DIR:-}" ]; then
+	{
+		printf '%s\n' "---"
+		for argument in "$@"; do
+			printf '%s\n' "$argument"
+		done
+	} >>"$PRQ_TEST_CAPTURE_DIR/gh.txt"
+fi
+
+case "$stdin $*" in
+	*mutation*)
+		exit 65
+		;;
+esac
+
+if [ "$#" -eq 2 ] && [ "$1" = "auth" ] && [ "$2" = "status" ]; then
+	if [ -n "${PRQ_TEST_GH_AUTH_ERROR:-}" ]; then
+		printf '%s\n' "$PRQ_TEST_GH_AUTH_ERROR" >&2
+		exit 1
+	fi
+	exit 0
+fi
+
+if [ "$#" -lt 4 ] || [ "$1" != "api" ] || [ "$2" != "graphql" ] || [ "$3" != "-f" ]; then
+	exit 64
+fi
+case "$4" in
+	query=*) ;;
+	*) exit 64 ;;
+esac
+
+case "$4" in
+	*CurrentViewer*)
+		if [ "$#" -ne 4 ]; then
+			exit 64
+		fi
+		cat "$repository_root/internal/github/testdata/viewer.json"
+		;;
+	*ViewerOrganizations*)
+		if [ "$#" -eq 4 ]; then
+			cat "$repository_root/internal/github/testdata/organizations-page-1.json"
+		elif [ "$#" -eq 6 ] && [ "$5" = "-F" ] && [ "$6" = "cursor=organizations-cursor-1" ]; then
+			cat "$repository_root/internal/github/testdata/organizations-page-2.json"
+		else
+			exit 64
+		fi
+		;;
+	*OrganizationRepositories*)
+		if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
+			case "$6" in
+				organization=*)
+					cat "$repository_root/internal/github/testdata/repositories.json"
+					;;
+				*)
+					exit 64
+					;;
+			esac
+		elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=repositories-cursor-1" ]; then
+			case "$6" in
+				organization=*) ;;
+				*) exit 64 ;;
+			esac
+			cat <<'EOF'
+{
+  "data": {
+    "organization": {
+      "repositories": {
+        "nodes": [
+          {
+            "nameWithOwner": "Acme/Beta"
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    }
+  }
+}
+EOF
+		else
+			exit 64
+		fi
+		;;
+	*OpenPullRequests*)
+		if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
+			case "$6" in
+				search=*)
+					cat "$repository_root/internal/github/testdata/pull-requests-page-1.json"
+					;;
+				*)
+					exit 64
+					;;
+			esac
+		elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=pull-requests-cursor-1" ]; then
+			case "$6" in
+				search=*) ;;
+				*) exit 64 ;;
+			esac
+			cat "$repository_root/internal/github/testdata/pull-requests-page-2.json"
+		else
+			exit 64
+		fi
+		;;
+	*)
+		exit 64
+		;;
+esac

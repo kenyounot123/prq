@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+cat >"$PRQ_TEST_CAPTURE_DIR/clipboard.txt"
