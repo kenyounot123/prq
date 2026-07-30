@@ -1,0 +1,84 @@
+name: Feature request
+description: Suggest a focused improvement to PRQ
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PRQ v1 is intentionally macOS-only and read-only. Remove personal
+        organizations, repositories, usernames, tokens, and local paths before
+        submitting.
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.0
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: Include the terminal application and version.
+      placeholder: Terminal 2.16
+    validations:
+      required: true
+  - type: input
+    id: prq-version
+    attributes:
+      label: "`prq --version`"
+      description: Paste the complete command output.
+    validations:
+      required: true
+  - type: input
+    id: gh-version
+    attributes:
+      label: "`gh --version`"
+      description: Paste the complete command output.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction or workflow steps
+      description: Show the current steps that motivate this request.
+      placeholder: |
+        1. Run ...
+        2. Press ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Describe the desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Explain the smallest change that would help.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs or examples
+      description: |
+        Add relevant output after removing personal organizations,
+        repositories, usernames, tokens, and local paths. Write "None" if no
+        logs apply.
+      render: shell
+    validations:
+      required: true

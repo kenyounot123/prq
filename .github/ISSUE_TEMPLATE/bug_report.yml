@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a reproducible problem with PRQ
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. Remove personal organizations,
+        repositories, usernames, tokens, and local paths before submitting.
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.0
+    validations:
+      required: true
+  - type: input
+    id: terminal
+    attributes:
+      label: Terminal
+      description: Include the terminal application and version.
+      placeholder: Terminal 2.16
+    validations:
+      required: true
+  - type: input
+    id: prq-version
+    attributes:
+      label: "`prq --version`"
+      description: Paste the complete command output.
+    validations:
+      required: true
+  - type: input
+    id: gh-version
+    attributes:
+      label: "`gh --version`"
+      description: Paste the complete command output.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: List the smallest sequence that reproduces the problem.
+      placeholder: |
+        1. Run ...
+        2. Press ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect PRQ to do?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      description: |
+        Paste relevant output after removing personal organizations,
+        repositories, usernames, tokens, and local paths.
+      render: shell
+    validations:
+      required: true
+  - type: checkboxes
+    id: security
+    attributes:
+      label: Security check
+      options:
+        - label: This report does not describe a possible GitHub write path or another vulnerability.
+          required: true
