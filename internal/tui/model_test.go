@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/kenyounot123/prq/internal/app"
 )
 
@@ -422,6 +423,40 @@ func TestWindowResizeUpdatesDimensionsAndDetailViewport(t *testing.T) {
 	}
 	if got := model.detailViewport.Height(); got != 4 {
 		t.Fatalf("narrow detail viewport height = %d, want 4", got)
+	}
+}
+
+func TestResizeBreaksOverlongDetailTokenIntoReachableViewportLines(t *testing.T) {
+	token := strings.Repeat("x", 120)
+	pullRequest := testPullRequest("PR_one", "acme/api", 1)
+	pullRequest.Body = token
+	cached := testSnapshot(pullRequest)
+	model := NewModel(
+		context.Background(),
+		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+		&cached,
+		nil,
+		testDependencies(),
+	)
+
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
+
+	contentLines := strings.Split(model.detailViewport.GetContent(), "\n")
+	if len(contentLines) < 2 {
+		t.Fatalf("wrapped detail lines = %d, want at least 2", len(contentLines))
+	}
+	for index, line := range contentLines {
+		if got := ansi.StringWidth(line); got > model.detailViewport.Width() {
+			t.Errorf(
+				"detail line %d width = %d, want at most viewport width %d",
+				index+1,
+				got,
+				model.detailViewport.Width(),
+			)
+		}
+	}
+	if got := strings.Join(contentLines, ""); got != token {
+		t.Fatalf("vertically reachable detail content length = %d, want %d", len(got), len(token))
 	}
 }
 

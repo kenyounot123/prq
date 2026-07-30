@@ -101,7 +101,7 @@ func (m *Model) syncDetailViewport() {
 		content = m.pullRequests[m.selected].Body
 	}
 	if m.detailViewport.Width() > 0 {
-		content = ansi.Wordwrap(content, m.detailViewport.Width(), " ")
+		content = ansi.Wrap(content, m.detailViewport.Width(), " ")
 	}
 	m.detailViewport.SetContent(content)
 	m.detailViewport.GotoTop()
