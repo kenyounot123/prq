@@ -1,0 +1,61 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_approved",
+          "number": 17,
+          "title": "Keep sessions alive",
+          "body": "Refreshes expired sessions.",
+          "url": "https://github.com/Acme/API/pull/17",
+          "isDraft": false,
+          "createdAt": "2026-07-01T10:00:00Z",
+          "updatedAt": "2026-07-10T12:30:00Z",
+          "reviewDecision": "APPROVED",
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "repository": {
+            "nameWithOwner": "Acme/API"
+          }
+        },
+        {
+          "id": "PR_draft",
+          "number": 28,
+          "title": "Draft navigation",
+          "body": "",
+          "url": "https://github.com/acme/web/pull/28",
+          "isDraft": true,
+          "createdAt": "2026-07-11T08:15:00Z",
+          "updatedAt": "2026-07-12T09:45:00Z",
+          "reviewDecision": null,
+          "statusCheckRollup": null,
+          "repository": {
+            "nameWithOwner": "acme/web"
+          }
+        },
+        {
+          "id": "PR_filtered",
+          "number": 99,
+          "title": "Not configured",
+          "body": "This repository is outside the selection.",
+          "url": "https://github.com/Acme/Private/pull/99",
+          "isDraft": false,
+          "createdAt": "2026-07-02T00:00:00Z",
+          "updatedAt": "2026-07-03T00:00:00Z",
+          "reviewDecision": "APPROVED",
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "repository": {
+            "nameWithOwner": "Acme/Private"
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": true,
+        "endCursor": "pull-requests-cursor-1"
+      }
+    }
+  }
+}

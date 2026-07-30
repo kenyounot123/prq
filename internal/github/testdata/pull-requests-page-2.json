@@ -1,0 +1,46 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_changes",
+          "number": 31,
+          "title": "Tighten request validation",
+          "body": "Reject malformed requests before dispatch.",
+          "url": "https://github.com/ACME/api/pull/31",
+          "isDraft": false,
+          "createdAt": "2026-07-13T13:00:00Z",
+          "updatedAt": "2026-07-14T14:00:00Z",
+          "reviewDecision": "CHANGES_REQUESTED",
+          "statusCheckRollup": {
+            "state": "FAILURE"
+          },
+          "repository": {
+            "nameWithOwner": "ACME/api"
+          }
+        },
+        {
+          "id": "PR_unknown",
+          "number": 42,
+          "title": "Exercise future enum values",
+          "body": "Unknown aggregate states remain visible.",
+          "url": "https://github.com/Acme/Web/pull/42",
+          "isDraft": false,
+          "createdAt": "2026-07-15T15:00:00Z",
+          "updatedAt": "2026-07-16T16:00:00Z",
+          "reviewDecision": "REVIEW_PENDING",
+          "statusCheckRollup": {
+            "state": "STALE"
+          },
+          "repository": {
+            "nameWithOwner": "Acme/Web"
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  }
+}

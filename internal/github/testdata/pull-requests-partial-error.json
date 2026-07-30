@@ -1,0 +1,34 @@
+{
+  "data": {
+    "search": {
+      "nodes": [
+        {
+          "id": "PR_incomplete",
+          "number": 55,
+          "title": "Incomplete result",
+          "body": "This result must not be returned.",
+          "url": "https://github.com/Acme/API/pull/55",
+          "isDraft": false,
+          "createdAt": "2026-07-17T10:00:00Z",
+          "updatedAt": "2026-07-17T11:00:00Z",
+          "reviewDecision": "APPROVED",
+          "statusCheckRollup": {
+            "state": "SUCCESS"
+          },
+          "repository": {
+            "nameWithOwner": "Acme/API"
+          }
+        }
+      ],
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      }
+    }
+  },
+  "errors": [
+    {
+      "message": "private response detail"
+    }
+  ]
+}
