@@ -364,26 +364,61 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 			wantExit: 0,
 		},
 		{
-			name:       "viewer",
-			args:       []string{"api", "graphql", "-f", "query=query CurrentViewer { viewer { login } }"},
+			name: "viewer",
+			args: []string{"api", "graphql", "-f", "query=" + `query CurrentViewer {
+  viewer { login }
+}`},
 			wantOutput: `"login": "OctoCat"`,
 			wantExit:   0,
 		},
 		{
-			name:       "organizations",
-			args:       []string{"api", "graphql", "-f", "query=query ViewerOrganizations { viewer { organizations { nodes { login } } } }"},
+			name: "organizations",
+			args: []string{"api", "graphql", "-f", "query=" + `query ViewerOrganizations($cursor: String) {
+  viewer {
+    organizations(first: 100, after: $cursor) {
+      nodes { login }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`},
 			wantOutput: `"login": "Zoo-Systems"`,
 			wantExit:   0,
 		},
 		{
-			name:       "repositories",
-			args:       []string{"api", "graphql", "-f", "query=query OrganizationRepositories { organization { repositories { nodes { nameWithOwner } } } }", "-F", "organization=Acme"},
+			name: "repositories",
+			args: []string{"api", "graphql", "-f", "query=" + `query OrganizationRepositories($organization: String!, $cursor: String) {
+  organization(login: $organization) {
+    repositories(first: 100, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
+      nodes { nameWithOwner }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}`, "-F", "organization=Acme"},
 			wantOutput: `"nameWithOwner": "Acme/Zulu"`,
 			wantExit:   0,
 		},
 		{
-			name:       "pull requests",
-			args:       []string{"api", "graphql", "-f", "query=query OpenPullRequests { search { nodes { id } } }", "-F", "search=is:pr is:open author:OctoCat org:Acme"},
+			name: "pull requests",
+			args: []string{"api", "graphql", "-f", "query=" + `query OpenPullRequests($search: String!, $cursor: String) {
+  search(query: $search, type: ISSUE, first: 100, after: $cursor) {
+    nodes {
+      ... on PullRequest {
+        id
+        number
+        title
+        body
+        url
+        isDraft
+        createdAt
+        updatedAt
+        reviewDecision
+        statusCheckRollup { state }
+        repository { nameWithOwner }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`, "-F", "search=is:pr is:open author:OctoCat org:Acme"},
 			wantOutput: `"id": "PR_approved"`,
 			wantExit:   0,
 		},
@@ -400,6 +435,13 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
 		{
 			name:     "approved query with extra flag",
 			args:     []string{"api", "graphql", "-f", "query=query CurrentViewer { viewer { login } }", "--method", "POST"},
+			wantExit: 64,
+		},
+		{
+			name: "known operation name with altered document",
+			args: []string{"api", "graphql", "-f", "query=" + `query CurrentViewer {
+  viewer { login name }
+}`},
 			wantExit: 64,
 		},
 		{
@@ -589,6 +631,23 @@ func TestRuntimeReportsMissingGitHubCLIWithInstallGuidance(t *testing.T) {
 	}
 }
 
+func TestNewRuntimeDepsMissingGitHubPreservesPresentationAndLookupErrors(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+
+	_, err := newRuntimeDeps(runtimeOptions{})
+
+	if !errors.Is(err, errGitHubCLINotFound) {
+		t.Fatalf("newRuntimeDeps() error = %v, want missing-CLI presentation sentinel", err)
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("newRuntimeDeps() error = %v, want exec.ErrNotFound cause", err)
+	}
+	var lookupError *exec.Error
+	if !errors.As(err, &lookupError) {
+		t.Fatalf("newRuntimeDeps() error = %v, want *exec.Error cause", err)
+	}
+}
+
 func TestRuntimeReportsAuthenticationFailureWithLoginGuidance(t *testing.T) {
 	root := repositoryRoot(t)
 	fakeBin := filepath.Join(root, "testdata", "bin")
@@ -625,6 +684,129 @@ func TestRuntimeReportsAuthenticationFailureWithLoginGuidance(t *testing.T) {
 	}
 	if _, err := os.Stat(paths.Config); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("config stat error = %v, want no configuration write", err)
+	}
+}
+
+func TestRuntimeSetupAuthenticationPreservesPresentationAndCommandErrors(t *testing.T) {
+	root := repositoryRoot(t)
+	fakeBin := filepath.Join(root, "testdata", "bin")
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PRQ_TEST_GH_AUTH_ERROR", "authentication expired")
+	deps, err := newRuntimeDeps(runtimeOptions{goos: "darwin"})
+	if err != nil {
+		t.Fatalf("newRuntimeDeps() error = %v", err)
+	}
+
+	_, err = deps.runSetup(t.Context())
+
+	if !errors.Is(err, errGitHubAuthentication) {
+		t.Fatalf("runSetup() error = %v, want authentication presentation sentinel", err)
+	}
+	var commandError *exec.ExitError
+	if !errors.As(err, &commandError) {
+		t.Fatalf("runSetup() error = %v, want *exec.ExitError cause", err)
+	}
+	if commandError.ExitCode() != 1 {
+		t.Fatalf("authentication exit code = %d, want 1", commandError.ExitCode())
+	}
+}
+
+func TestRuntimeValidConfigSurfacesAuthenticationGuidanceOnInitialRefreshAndRetry(t *testing.T) {
+	root := repositoryRoot(t)
+	fakeBin := filepath.Join(root, "testdata", "bin")
+	captureDirectory := t.TempDir()
+	t.Setenv("PATH", fakeBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PRQ_TEST_CAPTURE_DIR", captureDirectory)
+	t.Setenv("PRQ_TEST_GH_AUTH_ERROR", "authentication expired")
+
+	storeRoot := t.TempDir()
+	paths := store.Paths{
+		Config: filepath.Join(storeRoot, "config.json"),
+		Cache:  filepath.Join(storeRoot, "cache.json"),
+	}
+	selection := app.Selection{
+		Organization: "Acme",
+		Repositories: []string{"Acme/API"},
+	}
+	if err := (store.ConfigStore{Path: paths.Config}).Save(selection); err != nil {
+		t.Fatalf("save integration config: %v", err)
+	}
+	cached := app.Snapshot{
+		PullRequests: []app.PullRequest{{
+			ID:         "PR_cached",
+			Repository: "Acme/API",
+			Number:     7,
+			Title:      "Cached pull request remains visible",
+			Body:       "Cached body.",
+			URL:        "https://github.com/Acme/API/pull/7",
+			CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
+			UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
+			Review:     app.ReviewNone,
+			Checks:     app.ChecksNone,
+		}},
+		FetchedAt: time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
+	}
+	if err := (store.CacheStore{Path: paths.Cache}).Save(cached); err != nil {
+		t.Fatalf("save integration cache: %v", err)
+	}
+
+	const guidance = "GitHub authentication required; run: gh auth login"
+	programCalls := 0
+	deps, err := newRuntimeDeps(runtimeOptions{
+		paths:  paths,
+		input:  strings.NewReader(""),
+		output: io.Discard,
+		goos:   "darwin",
+		runProgram: func(_ context.Context, model tea.Model, _ io.Reader, _ io.Writer) error {
+			programCalls++
+			model, _ = model.Update(tea.WindowSizeMsg{Width: 80, Height: 32})
+			if view := model.View().Content; !strings.Contains(view, "Cached pull request remains visible") {
+				t.Fatalf("initial dashboard did not render cached data before refresh:\n%s", view)
+			}
+
+			refresh := model.Init()
+			if refresh == nil {
+				t.Fatal("dashboard model did not start the initial refresh")
+			}
+			model, _ = model.Update(refresh())
+			if view := model.View().Content; !strings.Contains(view, guidance) {
+				t.Fatalf("initial refresh view missing authentication guidance:\n%s", view)
+			}
+
+			var retry tea.Cmd
+			model, retry = model.Update(tea.KeyPressMsg(tea.Key{Text: "r", Code: 'r'}))
+			if retry == nil {
+				t.Fatal("retry key did not return a refresh command")
+			}
+			model, _ = model.Update(retry())
+			if view := model.View().Content; !strings.Contains(view, guidance) {
+				t.Fatalf("retry view missing authentication guidance:\n%s", view)
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("newRuntimeDeps() error = %v", err)
+	}
+	var stdout, stderr bytes.Buffer
+
+	exitCode := runWithDeps(t.Context(), nil, &stdout, &stderr, deps)
+
+	if exitCode != 0 {
+		t.Fatalf("runWithDeps() exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
+	}
+	if programCalls != 1 {
+		t.Fatalf("dashboard program calls = %d, want 1", programCalls)
+	}
+	captured, err := os.ReadFile(filepath.Join(captureDirectory, "gh.txt"))
+	if err != nil {
+		t.Fatalf("read GitHub capture: %v", err)
+	}
+	if got := strings.Count(string(captured), "---\nauth\nstatus\n"); got != 2 {
+		t.Fatalf("authentication checks = %d, want 2 initial/retry calls:\n%s", got, captured)
+	}
+	if strings.Contains(string(captured), "\napi\n") {
+		t.Fatalf("expired authentication reached a GraphQL request:\n%s", captured)
 	}
 }
 

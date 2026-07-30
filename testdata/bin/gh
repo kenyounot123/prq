@@ -4,6 +4,45 @@ set -eu
 script_dir=$(CDPATH= cd -- "${0%/*}" && pwd)
 repository_root=$(CDPATH= cd -- "$script_dir/../.." && pwd)
 stdin=$(cat)
+current_viewer_query='query=query CurrentViewer {
+  viewer { login }
+}'
+viewer_organizations_query='query=query ViewerOrganizations($cursor: String) {
+  viewer {
+    organizations(first: 100, after: $cursor) {
+      nodes { login }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}'
+organization_repositories_query='query=query OrganizationRepositories($organization: String!, $cursor: String) {
+  organization(login: $organization) {
+    repositories(first: 100, after: $cursor, orderBy: {field: NAME, direction: ASC}) {
+      nodes { nameWithOwner }
+      pageInfo { hasNextPage endCursor }
+    }
+  }
+}'
+open_pull_requests_query='query=query OpenPullRequests($search: String!, $cursor: String) {
+  search(query: $search, type: ISSUE, first: 100, after: $cursor) {
+    nodes {
+      ... on PullRequest {
+        id
+        number
+        title
+        body
+        url
+        isDraft
+        createdAt
+        updatedAt
+        reviewDecision
+        statusCheckRollup { state }
+        repository { nameWithOwner }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}'
 
 if [ -n "${PRQ_TEST_CAPTURE_DIR:-}" ]; then
 	{
@@ -36,38 +75,35 @@ case "$4" in
 	*) exit 64 ;;
 esac
 
-case "$4" in
-	*CurrentViewer*)
-		if [ "$#" -ne 4 ]; then
-			exit 64
-		fi
-		cat "$repository_root/internal/github/testdata/viewer.json"
-		;;
-	*ViewerOrganizations*)
-		if [ "$#" -eq 4 ]; then
-			cat "$repository_root/internal/github/testdata/organizations-page-1.json"
-		elif [ "$#" -eq 6 ] && [ "$5" = "-F" ] && [ "$6" = "cursor=organizations-cursor-1" ]; then
-			cat "$repository_root/internal/github/testdata/organizations-page-2.json"
-		else
-			exit 64
-		fi
-		;;
-	*OrganizationRepositories*)
-		if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
-			case "$6" in
-				organization=*)
-					cat "$repository_root/internal/github/testdata/repositories.json"
-					;;
-				*)
-					exit 64
-					;;
-			esac
-		elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=repositories-cursor-1" ]; then
-			case "$6" in
-				organization=*) ;;
-				*) exit 64 ;;
-			esac
-			cat <<'EOF'
+if [ "$4" = "$current_viewer_query" ]; then
+	if [ "$#" -ne 4 ]; then
+		exit 64
+	fi
+	cat "$repository_root/internal/github/testdata/viewer.json"
+elif [ "$4" = "$viewer_organizations_query" ]; then
+	if [ "$#" -eq 4 ]; then
+		cat "$repository_root/internal/github/testdata/organizations-page-1.json"
+	elif [ "$#" -eq 6 ] && [ "$5" = "-F" ] && [ "$6" = "cursor=organizations-cursor-1" ]; then
+		cat "$repository_root/internal/github/testdata/organizations-page-2.json"
+	else
+		exit 64
+	fi
+elif [ "$4" = "$organization_repositories_query" ]; then
+	if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
+		case "$6" in
+			organization=?*)
+				cat "$repository_root/internal/github/testdata/repositories.json"
+				;;
+			*)
+				exit 64
+				;;
+		esac
+	elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=repositories-cursor-1" ]; then
+		case "$6" in
+			organization=?*) ;;
+			*) exit 64 ;;
+		esac
+		cat <<'EOF'
 {
   "data": {
     "organization": {
@@ -86,31 +122,28 @@ case "$4" in
   }
 }
 EOF
-		else
-			exit 64
-		fi
-		;;
-	*OpenPullRequests*)
-		if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
-			case "$6" in
-				search=*)
-					cat "$repository_root/internal/github/testdata/pull-requests-page-1.json"
-					;;
-				*)
-					exit 64
-					;;
-			esac
-		elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=pull-requests-cursor-1" ]; then
-			case "$6" in
-				search=*) ;;
-				*) exit 64 ;;
-			esac
-			cat "$repository_root/internal/github/testdata/pull-requests-page-2.json"
-		else
-			exit 64
-		fi
-		;;
-	*)
+	else
 		exit 64
-		;;
-esac
+	fi
+elif [ "$4" = "$open_pull_requests_query" ]; then
+	if [ "$#" -eq 6 ] && [ "$5" = "-F" ]; then
+		case "$6" in
+			search=?*)
+				cat "$repository_root/internal/github/testdata/pull-requests-page-1.json"
+				;;
+			*)
+				exit 64
+				;;
+		esac
+	elif [ "$#" -eq 8 ] && [ "$5" = "-F" ] && [ "$7" = "-F" ] && [ "$8" = "cursor=pull-requests-cursor-1" ]; then
+		case "$6" in
+			search=?*) ;;
+			*) exit 64 ;;
+		esac
+		cat "$repository_root/internal/github/testdata/pull-requests-page-2.json"
+	else
+		exit 64
+	fi
+else
+	exit 64
+fi

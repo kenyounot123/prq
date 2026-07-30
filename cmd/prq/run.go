@@ -29,7 +29,7 @@ const usage = `Usage:
 var (
 	version                 = "dev"
 	errGitHubCLINotFound    = errors.New("GitHub CLI not found")
-	errGitHubAuthentication = errors.New("GitHub authentication required")
+	errGitHubAuthentication = errors.New("GitHub authentication required; run: gh auth login")
 )
 
 type command int
@@ -107,7 +107,10 @@ func newRuntimeDeps(options runtimeOptions) (runtimeDeps, error) {
 	runner, err := github.NewExecRunner()
 	if err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return runtimeDeps{}, fmt.Errorf("%w: %v", errGitHubCLINotFound, err)
+			return runtimeDeps{}, presentedError{
+				presentation: errGitHubCLINotFound,
+				cause:        err,
+			}
 		}
 		return runtimeDeps{}, err
 	}
@@ -122,6 +125,18 @@ func newRuntimeDeps(options runtimeOptions) (runtimeDeps, error) {
 		Reader: gitHubClient,
 		Cache:  cacheStore,
 		Now:    time.Now,
+	}
+	refresh := func(
+		ctx context.Context,
+		selection app.Selection,
+	) (app.RefreshResult, error) {
+		if err := gitHubClient.CheckAuth(ctx); err != nil {
+			return app.RefreshResult{}, presentedError{
+				presentation: errGitHubAuthentication,
+				cause:        err,
+			}
+		}
+		return service.Refresh(ctx, selection)
 	}
 	executor := platform.SystemExecutor{}
 	clipboard := platform.Clipboard{Exec: executor, GOOS: options.goos}
@@ -156,7 +171,7 @@ func newRuntimeDeps(options runtimeOptions) (runtimeDeps, error) {
 				cached,
 				cacheWarning,
 				tui.Dependencies{
-					Refresh: service.Refresh,
+					Refresh: refresh,
 					Copy:    clipboard.Copy,
 					Open:    browser.Open,
 					Now:     time.Now,
@@ -263,7 +278,23 @@ type setupGitHub struct {
 
 func (g setupGitHub) CheckAuth(ctx context.Context) error {
 	if err := g.Client.CheckAuth(ctx); err != nil {
-		return fmt.Errorf("%w: %v", errGitHubAuthentication, err)
+		return presentedError{
+			presentation: errGitHubAuthentication,
+			cause:        err,
+		}
 	}
 	return nil
+}
+
+type presentedError struct {
+	presentation error
+	cause        error
+}
+
+func (e presentedError) Error() string {
+	return e.presentation.Error()
+}
+
+func (e presentedError) Unwrap() []error {
+	return []error{e.presentation, e.cause}
 }
