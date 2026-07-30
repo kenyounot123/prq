@@ -47,12 +47,13 @@ func (f Flow) Run(ctx context.Context) (app.Selection, error) {
 		return app.Selection{}, fmt.Errorf("list organizations: no GitHub organizations available")
 	}
 
-	organization, err := f.Prompt.SelectOrganization(ctx, organizations)
+	selectedOrganization, err := f.Prompt.SelectOrganization(ctx, organizations)
 	if err != nil {
 		return app.Selection{}, fmt.Errorf("select organization: %w", err)
 	}
-	if !containsFold(organizations, organization) {
-		return app.Selection{}, fmt.Errorf("validate selection: organization %q is not available", organization)
+	organization, ok := canonicalValue(organizations, selectedOrganization)
+	if !ok {
+		return app.Selection{}, fmt.Errorf("validate selection: organization %q is not available", selectedOrganization)
 	}
 
 	repositories, err := f.GitHub.ListRepositories(ctx, organization)
@@ -67,13 +68,16 @@ func (f Flow) Run(ctx context.Context) (app.Selection, error) {
 	if err != nil {
 		return app.Selection{}, fmt.Errorf("select repositories: %w", err)
 	}
-	for _, repository := range selectedRepositories {
-		if !containsFold(repositories, repository) {
-			return app.Selection{}, fmt.Errorf("validate selection: repository %q is not available", repository)
+	canonicalRepositories := make([]string, 0, len(selectedRepositories))
+	for _, selectedRepository := range selectedRepositories {
+		repository, ok := canonicalValue(repositories, selectedRepository)
+		if !ok {
+			return app.Selection{}, fmt.Errorf("validate selection: repository %q is not available", selectedRepository)
 		}
+		canonicalRepositories = append(canonicalRepositories, repository)
 	}
 
-	selection, err := app.NormalizeSelection(organization, selectedRepositories)
+	selection, err := app.NormalizeSelection(organization, canonicalRepositories)
 	if err != nil {
 		return app.Selection{}, fmt.Errorf("validate selection: %w", err)
 	}
@@ -86,11 +90,11 @@ func (f Flow) Run(ctx context.Context) (app.Selection, error) {
 	return selection, nil
 }
 
-func containsFold(values []string, value string) bool {
+func canonicalValue(values []string, value string) (string, bool) {
 	for _, candidate := range values {
 		if strings.EqualFold(candidate, value) {
-			return true
+			return candidate, true
 		}
 	}
-	return false
+	return "", false
 }

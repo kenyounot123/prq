@@ -89,6 +89,63 @@ func TestFlowRunCoordinatesSetupInOrder(t *testing.T) {
 	}
 }
 
+func TestFlowRunUsesCanonicalDiscoveryValuesForCaseInsensitivePromptSelections(t *testing.T) {
+	var repositoryOrganization string
+	var promptOrganization string
+	var saved app.Selection
+
+	got, err := (Flow{
+		GitHub: fakeGitHub{
+			checkAuth: func(context.Context) error { return nil },
+			listOrganizations: func(context.Context) ([]string, error) {
+				return []string{"Acme"}, nil
+			},
+			listRepositories: func(_ context.Context, organization string) ([]string, error) {
+				repositoryOrganization = organization
+				return []string{"Acme/API"}, nil
+			},
+		},
+		Prompt: fakePrompter{
+			selectOrganization: func(context.Context, []string) (string, error) {
+				return "acme", nil
+			},
+			selectRepositories: func(
+				_ context.Context,
+				organization string,
+				_ []string,
+			) ([]string, error) {
+				promptOrganization = organization
+				return []string{"ACME/API"}, nil
+			},
+		},
+		Config: fakeConfigWriter{save: func(selection app.Selection) error {
+			saved = selection
+			return nil
+		}},
+		Cache: fakeCacheInvalidator{clear: func() error { return nil }},
+	}).Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := app.Selection{
+		Organization: "Acme",
+		Repositories: []string{"Acme/API"},
+	}
+	if repositoryOrganization != "Acme" {
+		t.Fatalf("ListRepositories organization = %q, want canonical %q", repositoryOrganization, "Acme")
+	}
+	if promptOrganization != "Acme" {
+		t.Fatalf("SelectRepositories organization = %q, want canonical %q", promptOrganization, "Acme")
+	}
+	if !reflect.DeepEqual(saved, want) {
+		t.Fatalf("saved selection = %#v, want canonical %#v", saved, want)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Run() = %#v, want canonical %#v", got, want)
+	}
+}
+
 func TestFlowRunRejectsEmptyDiscoveryResults(t *testing.T) {
 	t.Run("organizations", func(t *testing.T) {
 		var prompted bool
