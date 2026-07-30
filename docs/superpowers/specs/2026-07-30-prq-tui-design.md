@@ -1,7 +1,7 @@
 # PRQ TUI Design
 
 Date: 2026-07-30
-Status: Awaiting written-spec review
+Status: Approved
 
 ## Summary
 
