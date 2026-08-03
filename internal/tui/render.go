@@ -108,7 +108,7 @@ func (m Model) renderListPane(width, height int) string {
 	case len(m.pullRequests) == 0:
 		lines = append(lines, "", "No open pull requests.")
 	default:
-		const rowHeight = 5
+		const rowHeight = 3
 		visibleRows := max(1, (innerHeight-1)/rowHeight)
 		start := 0
 		if m.selected >= visibleRows {
@@ -126,9 +126,6 @@ func (m Model) renderListPane(width, height int) string {
 func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, width int) []string {
 	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
 	titleText := sanitizeTerminalText(pullRequest.Title, false)
-	bodyText := sanitizeTerminalText(pullRequest.Body, true)
-	reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
-	checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
 	marker := "  "
 	if selected {
 		marker = "› "
@@ -137,22 +134,16 @@ func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, 
 	if pullRequest.Draft {
 		state = "  DRAFT"
 	}
-	repository := truncateLine(
-		fmt.Sprintf("%s%s #%d%s", marker, repositoryText, pullRequest.Number, state),
-		width,
-	)
-	title := truncateLine("  "+oneLine(titleText), width)
-	description := truncateLine("  "+app.CompactDescription(bodyText), width)
-	review := truncateLine("  review: "+reviewText, width)
-	checks := truncateLine(
-		fmt.Sprintf("  checks: %s  •  %s", checksText, relativeAge(m.now(), pullRequest.UpdatedAt)),
+	title := truncateDisplayLine(marker+oneLine(titleText), width)
+	metadata := truncateDisplayLine(
+		fmt.Sprintf("  %s #%d%s", repositoryText, pullRequest.Number, state),
 		width,
 	)
 	if selected {
-		repository = selectedStyle.Render(repository)
 		title = selectedStyle.Render(title)
 	}
-	return []string{repository, title, description, review, checks}
+	metadata = mutedStyle.Render(metadata)
+	return []string{title, metadata, ""}
 }
 
 func (m Model) renderDetailPane(width, height int) string {
@@ -283,10 +274,13 @@ func renderPane(content string, width, height int, focused bool) string {
 }
 
 func truncateLine(value string, width int) string {
+	return truncateDisplayLine(oneLine(value), width)
+}
+
+func truncateDisplayLine(value string, width int) string {
 	if width <= 0 {
 		return ""
 	}
-	value = oneLine(value)
 	if ansi.StringWidth(value) <= width {
 		return value
 	}

@@ -1,16 +1,16 @@
 PRQ • 2 pull requests • refreshing • last updated <age>
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ PULL REQUESTS                                                                │
-│ › acme/api #184                                                              │
-│ Fix session refresh                                                          │
-│ Refreshes expired sessions without forcing a new login, dropping cookies, o… │
-│ review: approved                                                             │
-│ checks: passing • <age>                                                     │
-│ acme/web #92 DRAFT                                                           │
-│ Add invoice filters                                                          │
-│ No description                                                               │
-│ review: changes requested                                                    │
-│ checks: failing • <age>                                                     │
+│ › Fix session refresh                                                        │
+│   acme/api #184                                                              │
+│                                                                              │
+│   Add invoice filters                                                        │
+│   acme/web #92  DRAFT                                                        │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
+│                                                                              │
 │                                                                              │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮

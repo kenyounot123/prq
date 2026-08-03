@@ -58,12 +58,8 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 				"Refreshes expired sessions",
 				"cookies",
 				"unsaved work.",
-				"review: approved",
-				"checks: passing",
 				"acme/web #92",
 				"DRAFT",
-				"review: changes requested",
-				"checks: failing",
 				"Created: 2026-07-20 12:00 UTC",
 				"Updated: 2026-07-29 12:00 UTC",
 				"https://github.com/acme/api/pull/184",
@@ -103,6 +99,51 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 				t.Fatalf("render differs from %s\n--- got ---\n%s\n--- want ---\n%s", tt.goldenFile, normalized, want)
 			}
 		})
+	}
+}
+
+func TestRenderPullRequestRowUsesTitleFirstVisualHierarchy(t *testing.T) {
+	pullRequest := app.PullRequest{
+		Repository: "acme/api",
+		Number:     184,
+		Title:      "Fix session refresh",
+		Body:       "Description must not appear in the list.",
+		Draft:      true,
+		Review:     app.ReviewApproved,
+		Checks:     app.ChecksPassing,
+		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
+	}
+
+	got := (Model{}).renderPullRequestRow(pullRequest, true, 80)
+	want := []string{
+		selectedStyle.Render("› Fix session refresh"),
+		mutedStyle.Render("  acme/api #184  DRAFT"),
+		"",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("renderPullRequestRow() = %#v, want %#v", got, want)
+	}
+}
+
+func TestRenderListPaneFitsThreeCompactRows(t *testing.T) {
+	model := Model{
+		pullRequests: []app.PullRequest{
+			{Title: "First pull request"},
+			{Title: "Second pull request"},
+			{Title: "Third pull request"},
+		},
+		selected: 2,
+	}
+
+	rendered := ansi.Strip(model.renderListPane(40, 12))
+	for _, title := range []string{
+		"First pull request",
+		"Second pull request",
+		"Third pull request",
+	} {
+		if !strings.Contains(rendered, title) {
+			t.Errorf("compact list missing %q:\n%s", title, rendered)
+		}
 	}
 }
 
