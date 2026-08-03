@@ -155,29 +155,54 @@ func (m Model) renderDetailPane(width, height int) string {
 			lines = append(lines, "")
 		}
 	} else {
-		pullRequest := m.pullRequests[m.selected]
-		repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
-		titleText := sanitizeTerminalText(pullRequest.Title, false)
-		urlText := sanitizeTerminalText(pullRequest.URL, false)
-		reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
-		checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
-		state := "open"
-		if pullRequest.Draft {
-			state = "draft"
-		}
-		lines = append(lines,
-			truncateLine(fmt.Sprintf("%s #%d", repositoryText, pullRequest.Number), innerWidth),
-			truncateLine(oneLine(titleText), innerWidth),
-			"State: "+state,
-			"Created: "+pullRequest.CreatedAt.UTC().Format("2006-01-02 15:04 MST"),
-			"Updated: "+pullRequest.UpdatedAt.UTC().Format("2006-01-02 15:04 MST"),
-			"Review: "+reviewText,
-			"Checks: "+checksText,
-			truncateLine(urlText, innerWidth),
+		lines = append(
+			lines,
+			renderPullRequestDetailSummary(m.pullRequests[m.selected], innerWidth)...,
 		)
 	}
 	lines = append(lines, m.detailViewport.View())
 	return renderPane(strings.Join(lines, "\n"), width, height, m.focus == detailFocus)
+}
+
+func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int) []string {
+	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
+	titleText := sanitizeTerminalText(pullRequest.Title, false)
+	urlText := sanitizeTerminalText(pullRequest.URL, false)
+	reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
+	checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
+	state := "OPEN"
+	if pullRequest.Draft {
+		state = "DRAFT"
+	}
+
+	review := "Review " + reviewText
+	if pullRequest.Review == app.ReviewChangesRequested {
+		review = errorStyle.Render(review)
+	}
+	checks := "Checks " + checksText
+	if pullRequest.Checks == app.ChecksFailing {
+		checks = errorStyle.Render(checks)
+	}
+
+	return []string{
+		selectedStyle.Render(truncateLine(titleText, width)),
+		mutedStyle.Render(truncateDisplayLine(
+			fmt.Sprintf("%s #%d  •  %s", repositoryText, pullRequest.Number, state),
+			width,
+		)),
+		"",
+		truncateDisplayLine(review+"  •  "+checks, width),
+		mutedStyle.Render(truncateDisplayLine(
+			fmt.Sprintf(
+				"Created %s  •  Updated %s",
+				pullRequest.CreatedAt.UTC().Format("2006-01-02 15:04 MST"),
+				pullRequest.UpdatedAt.UTC().Format("2006-01-02 15:04 MST"),
+			),
+			width,
+		)),
+		mutedStyle.Render(truncateLine(urlText, width)),
+		"",
+	}
 }
 
 func (m Model) renderStatus() string {

@@ -16,7 +16,7 @@ const (
 	paneFrameWidth      = 4
 	paneBorderHeight    = 2
 	dashboardChromeRows = 3
-	detailMetadataRows  = 9
+	detailMetadataRows  = 8
 )
 
 type Dependencies struct {

@@ -411,8 +411,8 @@ func TestWindowResizeUpdatesDimensionsAndDetailViewport(t *testing.T) {
 	if got := model.detailViewport.Width(); got != 68 {
 		t.Fatalf("wide detail viewport width = %d, want 68", got)
 	}
-	if got := model.detailViewport.Height(); got != 18 {
-		t.Fatalf("wide detail viewport height = %d, want 18", got)
+	if got := model.detailViewport.Height(); got != 19 {
+		t.Fatalf("wide detail viewport height = %d, want 19", got)
 	}
 
 	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
@@ -422,8 +422,8 @@ func TestWindowResizeUpdatesDimensionsAndDetailViewport(t *testing.T) {
 	if got := model.detailViewport.Width(); got != 76 {
 		t.Fatalf("narrow detail viewport width = %d, want 76", got)
 	}
-	if got := model.detailViewport.Height(); got != 4 {
-		t.Fatalf("narrow detail viewport height = %d, want 4", got)
+	if got := model.detailViewport.Height(); got != 5 {
+		t.Fatalf("narrow detail viewport height = %d, want 5", got)
 	}
 }
 

@@ -60,8 +60,8 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 				"unsaved work.",
 				"acme/web #92",
 				"DRAFT",
-				"Created: 2026-07-20 12:00 UTC",
-				"Updated: 2026-07-29 12:00 UTC",
+				"Created 2026-07-20 12:00 UTC",
+				"Updated 2026-07-29 12:00 UTC",
 				"https://github.com/acme/api/pull/184",
 				"↑/↓ move",
 				"Tab focus",
@@ -144,6 +144,40 @@ func TestRenderListPaneFitsThreeCompactRows(t *testing.T) {
 		if !strings.Contains(rendered, title) {
 			t.Errorf("compact list missing %q:\n%s", title, rendered)
 		}
+	}
+}
+
+func TestRenderPullRequestDetailSummaryUsesGroupedVisualHierarchy(t *testing.T) {
+	pullRequest := app.PullRequest{
+		Repository: "acme/api",
+		Number:     184,
+		Title:      "Fix session refresh",
+		URL:        "https://github.com/acme/api/pull/184",
+		CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
+		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
+		Review:     app.ReviewChangesRequested,
+		Checks:     app.ChecksFailing,
+	}
+
+	got := renderPullRequestDetailSummary(pullRequest, 120)
+	want := []string{
+		selectedStyle.Render("Fix session refresh"),
+		mutedStyle.Render("acme/api #184  •  OPEN"),
+		"",
+		errorStyle.Render("Review changes requested") + "  •  " + errorStyle.Render("Checks failing"),
+		mutedStyle.Render("Created 2026-07-20 12:00 UTC  •  Updated 2026-07-29 12:00 UTC"),
+		mutedStyle.Render("https://github.com/acme/api/pull/184"),
+		"",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("renderPullRequestDetailSummary() = %#v, want %#v", got, want)
+	}
+
+	pullRequest.Review = app.ReviewApproved
+	pullRequest.Checks = app.ChecksPassing
+	got = renderPullRequestDetailSummary(pullRequest, 120)
+	if got[3] != "Review approved  •  Checks passing" {
+		t.Fatalf("neutral status line = %q, want unstyled neutral statuses", got[3])
 	}
 }
 
@@ -303,8 +337,8 @@ func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *tes
 		"https://github.com/acme/api/pull/9",
 		"First line",
 		"Second� line�end",
-		"Review: approved�now",
-		"Checks: passing�now",
+		"Review approved�now",
+		"Checks passing�now",
 	} {
 		if !strings.Contains(stripped, want) {
 			t.Errorf("sanitized render missing %q:\n%s", want, stripped)

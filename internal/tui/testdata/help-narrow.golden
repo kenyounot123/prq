@@ -15,17 +15,17 @@ PRQ • 2 pull requests • refreshing • last updated <age>
 ╰──────────────────────────────────────────────────────────────────────────────╯
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ DETAIL                                                                       │
-│ acme/api #184                                                                │
 │ Fix session refresh                                                          │
-│ State: open                                                                  │
-│ Created: 2026-07-20 12:00 UTC                                                │
-│ Updated: 2026-07-29 12:00 UTC                                                │
-│ Review: approved                                                             │
-│ Checks: passing                                                              │
+│ acme/api #184  •  OPEN                                                       │
+│                                                                              │
+│ Review approved  •  Checks passing                                           │
+│ Created 2026-07-20 12:00 UTC  •  Updated 2026-07-29 12:00 UTC                │
 │ https://github.com/acme/api/pull/184                                         │
+│                                                                              │
 │ Refreshes expired sessions without forcing a new login, dropping cookies, or │
 │ losing unsaved work.                                                         │
 │                                                                              │
+│ ## Notes                                                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
 ↑/↓ move or scroll Tab switch focus o open c copy URL C copy all as Slack
