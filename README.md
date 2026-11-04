@@ -100,11 +100,30 @@ selection. The available command surface is:
 ```text
 prq
 prq setup
+prq export [--org ORG] [--account LOGIN]
 prq --help
 prq --version
 ```
 
 PRQ does not run `gh auth login` for you.
+
+## Export for scripts
+
+`prq export` fetches your open pull requests once, prints them as JSON, and
+exits. It never opens the dashboard and never writes the cache, so scripts and
+other dashboards can use the same data PRQ shows.
+
+```sh
+prq export                                         # configured organization and repositories
+prq export --org other-org                         # every repository in other-org
+prq export --org other-org --account other-login   # with another gh account's token
+```
+
+`--account` uses the token of a `gh` account you are already logged in to, for
+that one command only. It never runs `gh auth switch`, so the active account in
+your other terminals stays the same. Each pull request includes its repository,
+number, title, body, URL, branch, draft state, review state, check state, and
+timestamps.
 
 ## Keyboard controls
 
@@ -153,13 +172,15 @@ delegates its validated `https://github.com` URL to the macOS browser.
 
 ## Read-only GitHub guarantee
 
-PRQ shells out to your authenticated `gh`; it does not read, persist, or log
-GitHub tokens. The GitHub boundary exposes only authentication status and fixed,
+PRQ shells out to your authenticated `gh`; it does not persist or log GitHub
+tokens. The only token it reads is the one `prq export --account` asks `gh auth
+token` for, which it passes to its own `gh` subprocesses and then discards. The GitHub boundary exposes only authentication status and fixed,
 named GraphQL `query` documents. User-controlled values are passed as GraphQL
 variables, never inserted into operation text.
 
 Every `gh` invocation is checked against an allowlist. The runner accepts only
-`gh auth status` and the fixed PRQ GraphQL queries, and refuses mutation
+`gh auth status` and the fixed PRQ GraphQL queries (plus the one
+`gh auth token --user` lookup for `--account`), and refuses mutation
 operations, unrecognized documents, flags, or variables. Tests enumerate the
 queries and inspect subprocess arguments to preserve this invariant. GraphQL
 uses HTTP POST as transport, but every operation is a read-only `query`.

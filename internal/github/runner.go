@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -16,6 +17,8 @@ type Runner interface {
 
 type ExecRunner struct {
 	Path string
+	// Env adds variables, such as GH_TOKEN, to the environment gh runs with.
+	Env []string
 }
 
 func NewExecRunner() (*ExecRunner, error) {
@@ -33,6 +36,9 @@ func (r *ExecRunner) Run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 
 	command := exec.CommandContext(ctx, r.Path, args...)
+	if len(r.Env) > 0 {
+		command.Env = append(os.Environ(), r.Env...)
+	}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	command.Stdout = &stdout

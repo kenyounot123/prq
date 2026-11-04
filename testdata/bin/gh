@@ -33,6 +33,7 @@ open_pull_requests_query='query=query OpenPullRequests($search: String!, $cursor
         body
         url
         isDraft
+        headRefName
         createdAt
         updatedAt
         reviewDecision

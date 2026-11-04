@@ -577,3 +577,29 @@ func readFixture(t *testing.T, name string) []byte {
 	}
 	return data
 }
+
+func TestExecRunnerPassesExtraEnvironmentAndKeepsInherited(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "fake-gh")
+	capturePath := filepath.Join(directory, "env")
+	script := "#!/bin/sh\n" +
+		"printf '%s|%s' \"$GH_TOKEN\" \"$PRQ_INHERITED\" >\"$PRQ_ENV_CAPTURE\"\n" +
+		"printf '%s\\n' '{\"data\":{\"viewer\":{\"login\":\"octo\"}}}'\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PRQ_ENV_CAPTURE", capturePath)
+	t.Setenv("PRQ_INHERITED", "kept")
+
+	runner := &ExecRunner{Path: path, Env: []string{"GH_TOKEN=account-token"}}
+	if _, err := runner.Run(context.Background(), "api", "graphql", "--hostname", "github.com", "-f", "query="+currentViewerQuery); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	captured, err := os.ReadFile(capturePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(captured); got != "account-token|kept" {
+		t.Fatalf("process environment = %q, want the extra token and inherited variables", got)
+	}
+}

@@ -254,12 +254,12 @@ func TestRunWithDepsHelpAndVersionWriteOnlyStdoutWithoutDependencies(t *testing.
 		{
 			name: "help",
 			args: []string{"--help"},
-			want: "Usage:\n  prq\n  prq setup\n  prq --help\n  prq --version\n",
+			want: "Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n",
 		},
 		{
 			name: "short help",
 			args: []string{"-h"},
-			want: "Usage:\n  prq\n  prq setup\n  prq --help\n  prq --version\n",
+			want: "Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n",
 		},
 		{name: "version", args: []string{"--version"}, want: "prq dev\n"},
 	}
@@ -420,6 +420,7 @@ func TestCheckedInFakeGitHubSupportsReadOnlyAllowlist(t *testing.T) {
         body
         url
         isDraft
+        headRefName
         createdAt
         updatedAt
         reviewDecision
@@ -880,7 +881,7 @@ func TestBuiltExecutableSupportsHelpAndVersion(t *testing.T) {
 		arg  string
 		want string
 	}{
-		{arg: "--help", want: "Usage:\n  prq\n  prq setup\n  prq --help\n  prq --version\n"},
+		{arg: "--help", want: "Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n"},
 		{arg: "--version", want: "prq dev\n"},
 	}
 	for _, test := range tests {

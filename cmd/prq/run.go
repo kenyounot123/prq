@@ -22,6 +22,7 @@ import (
 const usage = `Usage:
   prq
   prq setup
+  prq export [--org ORG] [--account LOGIN]
   prq --help
   prq --version
 `
@@ -37,6 +38,7 @@ type command int
 const (
 	commandDashboard command = iota
 	commandSetup
+	commandExport
 	commandHelp
 	commandVersion
 )
@@ -64,6 +66,11 @@ func parseCommand(args []string) (command, error) {
 		return commandDashboard, nil
 	case len(args) == 1 && args[0] == "setup":
 		return commandSetup, nil
+	case len(args) >= 1 && args[0] == "export":
+		if _, err := parseExportOptions(args[1:]); err != nil {
+			return commandDashboard, err
+		}
+		return commandExport, nil
 	case len(args) == 1 && (args[0] == "--help" || args[0] == "-h"):
 		return commandHelp, nil
 	case len(args) == 1 && args[0] == "--version":
@@ -82,6 +89,9 @@ func run(
 	selectedCommand, parseErr := parseCommand(args)
 	if parseErr != nil || selectedCommand == commandHelp || selectedCommand == commandVersion {
 		return runWithDeps(ctx, args, stdout, stderr, runtimeDeps{})
+	}
+	if selectedCommand == commandExport {
+		return runExportCommand(ctx, args[1:], stdout, stderr)
 	}
 
 	paths, err := store.DefaultPaths()
@@ -254,6 +264,28 @@ func runDashboardCommand(ctx context.Context, stderr io.Writer, deps runtimeDeps
 	}
 
 	if err := deps.runDashboard(ctx, selection, cachedSnapshot, cacheWarning); err != nil {
+		return reportError(stderr, err)
+	}
+	return 0
+}
+
+func runExportCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	options, err := parseExportOptions(args)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		fmt.Fprint(stderr, usage)
+		return 2
+	}
+	paths, err := store.DefaultPaths()
+	if err != nil {
+		return reportError(stderr, fmt.Errorf("locate PRQ data files: %w", err))
+	}
+	deps := exportDeps{
+		loadConfig: store.ConfigStore{Path: paths.Config}.Load,
+		newReader:  newExportReader,
+		now:        time.Now,
+	}
+	if err := runExport(ctx, options, stdout, deps); err != nil {
 		return reportError(stderr, err)
 	}
 	return 0

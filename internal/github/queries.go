@@ -32,6 +32,7 @@ const openPullRequestsQuery = `query OpenPullRequests($search: String!, $cursor:
         body
         url
         isDraft
+        headRefName
         createdAt
         updatedAt
         reviewDecision

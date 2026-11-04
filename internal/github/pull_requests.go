@@ -96,6 +96,7 @@ type pullRequestNode struct {
 	Body              string `json:"body"`
 	URL               string `json:"url"`
 	IsDraft           bool   `json:"isDraft"`
+	HeadRefName       string `json:"headRefName"`
 	CreatedAt         string `json:"createdAt"`
 	UpdatedAt         string `json:"updatedAt"`
 	ReviewDecision    string `json:"reviewDecision"`
@@ -125,6 +126,7 @@ func normalizePullRequest(node pullRequestNode) (app.PullRequest, error) {
 		Body:       node.Body,
 		URL:        node.URL,
 		Draft:      node.IsDraft,
+		Branch:     node.HeadRefName,
 		CreatedAt:  createdAt,
 		UpdatedAt:  updatedAt,
 		Review:     app.ReviewStateFromGitHub(node.ReviewDecision),
