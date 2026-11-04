@@ -7,9 +7,9 @@ authored across a selected set of GitHub repositories.
 
 PRQ restores pull request context without making you keep a browser dashboard
 open. It shows open pull requests authored by the current GitHub user, including
-drafts, with their descriptions, review decisions, check states, and update
-times. A persistent detail pane shows the full body of the selected pull
-request.
+drafts, with review decisions, check states, and update times. Checkboxes let
+you select a subset to copy. A compact detail card shows the highlighted pull
+request's status, relative creation/update times, and URL.
 
 The dashboard displays cached results immediately, refreshes from GitHub in the
 background, and keeps usable cached data visible if a refresh fails.
@@ -110,28 +110,30 @@ PRQ does not run `gh auth login` for you.
 
 | Key | Action |
 | --- | --- |
-| `↑` / `↓` | Move the selected pull request when the list is focused; scroll the body when the detail pane is focused |
-| `Tab` | Move focus between the list and detail pane |
-| `o` | Open the selected pull request in the default browser |
-| `c` | Copy the selected pull request URL |
-| `C` | Copy all displayed pull requests as Slack-formatted bullets |
+| `↑` / `↓` | Move the highlighted pull request |
+| `Space` | Check or uncheck the highlighted pull request |
+| `a` | Check all displayed pull requests |
+| `Esc` | Clear all checkboxes |
+| `o` | Open the highlighted pull request in the default browser |
+| `c` | Copy checked pull request URLs; when none are checked, copy the highlighted URL |
+| `C` | Copy all displayed pull request URLs |
 | `r` | Refresh from GitHub |
 | `?` | Toggle full key help |
 | `q` | Quit |
 
-The open, copy, bulk-copy, refresh, help, and quit keys work regardless of which
-pane is focused. `Enter` has no dashboard action in v1.
+Moving the highlight updates the detail card without changing any checkboxes.
+Checkboxes stay checked after copying and refreshing; PRs that disappear from
+the refreshed list are removed from the selection. Selections last for the
+current session. The footer shows whether `c` will copy a URL or selected PRs.
+`Enter` and `Tab` have no dashboard action.
 
-Bulk copy follows dashboard order and produces one line per pull request:
+Selected and bulk copy follow dashboard order and produce one URL per line:
 
 ```text
-• <https://github.com/acme/api/pull/184|Fix session refresh> — Refreshes expired sessions without forcing a new login.
+https://github.com/acme/api/pull/184
 ```
 
-The full title becomes the Slack link label, and the full compact description
-follows it. PRQ escapes Slack-sensitive `&`, `<`, and `>` characters in titles
-and descriptions. Pull requests without a meaningful body use
-`No description`.
+Descriptions are not included in copied text.
 
 ## Data and privacy
 

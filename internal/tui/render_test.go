@@ -30,6 +30,7 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := renderTestModel()
+			model.checked["PR_web_92"] = true
 			model = updateModel(t, model, tea.WindowSizeMsg{Width: tt.width, Height: 32})
 
 			view := model.View()
@@ -55,16 +56,13 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 				"refreshing",
 				"acme/api #184",
 				"Fix session refresh",
-				"Refreshes expired sessions",
-				"cookies",
-				"unsaved work.",
 				"acme/web #92",
 				"DRAFT",
-				"Created 2026-07-20 12:00 UTC",
-				"Updated 2026-07-29 12:00 UTC",
+				"Created  10d ago",
+				"Updated  1d ago",
 				"https://github.com/acme/api/pull/184",
 				"↑/↓ move",
-				"Tab focus",
+				"Space select",
 				"? help",
 			} {
 				if !strings.Contains(ansi.Strip(raw), required) {
@@ -116,8 +114,8 @@ func TestRenderPullRequestRowUsesTitleFirstVisualHierarchy(t *testing.T) {
 
 	got := (Model{}).renderPullRequestRow(pullRequest, true, 80)
 	want := []string{
-		selectedStyle.Render("› Fix session refresh"),
-		mutedStyle.Render("  acme/api #184  DRAFT"),
+		selectedStyle.Render("› [ ] Fix session refresh"),
+		mutedStyle.Render("      acme/api #184  DRAFT · approved · Checks passing"),
 		"",
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -159,15 +157,17 @@ func TestRenderPullRequestDetailSummaryUsesGroupedVisualHierarchy(t *testing.T) 
 		Checks:     app.ChecksFailing,
 	}
 
-	got := renderPullRequestDetailSummary(pullRequest, 120)
+	got := renderPullRequestDetailSummary(pullRequest, 120, time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC))
 	want := []string{
 		selectedStyle.Render("Fix session refresh"),
 		mutedStyle.Render("acme/api #184  •  OPEN"),
 		"",
-		errorStyle.Render("Review changes requested") + "  •  " + errorStyle.Render("Checks failing"),
-		mutedStyle.Render("Created 2026-07-20 12:00 UTC  •  Updated 2026-07-29 12:00 UTC"),
-		mutedStyle.Render("https://github.com/acme/api/pull/184"),
+		errorStyle.Render("Review   changes requested"),
+		errorStyle.Render("Checks   failing"),
 		"",
+		mutedStyle.Render("Created  10d ago"),
+		mutedStyle.Render("Updated  1d ago"),
+		mutedStyle.Render("https://github.com/acme/api/pull/184"),
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("renderPullRequestDetailSummary() = %#v, want %#v", got, want)
@@ -175,8 +175,8 @@ func TestRenderPullRequestDetailSummaryUsesGroupedVisualHierarchy(t *testing.T) 
 
 	pullRequest.Review = app.ReviewApproved
 	pullRequest.Checks = app.ChecksPassing
-	got = renderPullRequestDetailSummary(pullRequest, 120)
-	if got[3] != "Review approved  •  Checks passing" {
+	got = renderPullRequestDetailSummary(pullRequest, 120, time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC))
+	if got[3] != "Review   approved" || got[4] != "Checks   passing" {
 		t.Fatalf("neutral status line = %q, want unstyled neutral statuses", got[3])
 	}
 }
@@ -236,8 +236,10 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
 			},
 			required: []string{
-				"↑/↓ move or scroll",
-				"Tab switch focus",
+				"↑/↓ move",
+				"Space toggle checkbox",
+				"a select all",
+				"Esc clear selection",
 				"o open",
 				"c copy URL",
 				"C copy all as Slack",
@@ -255,8 +257,10 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
 			},
 			required: []string{
-				"↑/↓ move or scroll",
-				"Tab switch focus",
+				"↑/↓ move",
+				"Space toggle checkbox",
+				"a select all",
+				"Esc clear selection",
 				"o open",
 				"c copy URL",
 				"C copy all as Slack",
@@ -335,10 +339,8 @@ func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *tes
 		"acme/api #9",
 		"Fix linked title�back�space�c1",
 		"https://github.com/acme/api/pull/9",
-		"First line",
-		"Second� line�end",
-		"Review approved�now",
-		"Checks passing�now",
+		"Review   approved�now",
+		"Checks   passing�now",
 	} {
 		if !strings.Contains(stripped, want) {
 			t.Errorf("sanitized render missing %q:\n%s", want, stripped)
@@ -366,9 +368,7 @@ func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *tes
 			t.Errorf("raw render contains untrusted terminal sequence %q", forbidden)
 		}
 	}
-	if !strings.Contains(model.detailViewport.GetContent(), "\n") {
-		t.Fatalf("sanitized detail body lost intended newline: %q", model.detailViewport.GetContent())
-	}
+
 	if !reflect.DeepEqual(model.pullRequests[0], original) {
 		t.Fatalf("render mutated domain pull request = %#v, want %#v", model.pullRequests[0], original)
 	}
@@ -477,4 +477,44 @@ func lineContaining(render, needle string) int {
 		}
 	}
 	return -1
+}
+
+func TestRenderCheckedPRsAndCompactStatusWithoutDescription(t *testing.T) {
+	for _, width := range []int{60, 80, 100, 120, 180} {
+		for _, height := range []int{20, 32} {
+			for _, help := range []bool{false, true} {
+				model := renderTestModel()
+				model.checked[model.pullRequests[1].ID] = true
+				model.showHelp = help
+				model.resize(width, height)
+				rendered := ansi.Strip(model.View().Content)
+				for _, forbidden := range []string{"Refreshes expired", "## Notes", "copy preview", "Tab focus"} {
+					if strings.Contains(rendered, forbidden) {
+						t.Fatalf("render contains %q", forbidden)
+					}
+				}
+				for _, required := range []string{"1 selected", "› [ ] Fix session refresh", "[x] Add invoice filters", "c copy 1 selected"} {
+					if !strings.Contains(rendered, required) {
+						t.Errorf("%dx%d help=%v missing %q: %s", width, height, help, required, rendered)
+					}
+				}
+				lines := strings.Split(rendered, "\n")
+				if len(lines) != height {
+					t.Errorf("%dx%d help=%v rendered %d lines", width, height, help, len(lines))
+				}
+				for _, line := range lines {
+					if ansi.StringWidth(line) != width {
+						t.Errorf("%dx%d line width = %d", width, height, ansi.StringWidth(line))
+					}
+				}
+				listWidth, detailWidth, _, detailHeight := paneDimensions(width, height, model.chromeRows())
+				if width >= wideLayoutMin && listWidth <= detailWidth {
+					t.Fatal("wide list is not wider than detail")
+				}
+				if detailHeight > 12 {
+					t.Fatalf("detail card is %d lines tall", detailHeight)
+				}
+			}
+		}
+	}
 }

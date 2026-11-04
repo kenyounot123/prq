@@ -18,6 +18,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selected >= 0 && m.selected < len(m.pullRequests) {
 				selectedID = m.pullRequests[m.selected].ID
 			}
+			checked := make(map[string]bool)
+			for _, pullRequest := range msg.result.Snapshot.PullRequests {
+				if m.checked[pullRequest.ID] {
+					checked[pullRequest.ID] = true
+				}
+			}
+			m.checked = checked
 			m.pullRequests = slices.Clone(msg.result.Snapshot.PullRequests)
 			m.fetchedAt = msg.result.Snapshot.FetchedAt
 			for index := range m.pullRequests {
@@ -33,7 +40,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.selected < 0 {
 				m.selected = 0
 			}
-			m.syncDetailViewport()
 			m.loading = false
 			m.stale = false
 			m.refreshErr = nil
@@ -61,7 +67,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "?":
 			m.showHelp = !m.showHelp
-			m.resizeDetailViewportHeight()
 			return m, nil
 		case "r":
 			if m.refreshing {
@@ -78,7 +83,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			text := app.FormatSlackList(m.pullRequests)
 			success := fmt.Sprintf("Copied %d pull requests.", len(m.pullRequests))
 			return m, m.copyCmd(text, success)
+		case "space":
+			if pullRequest, ok := m.selectedPullRequest(); ok {
+				if m.checked == nil {
+					m.checked = make(map[string]bool)
+				}
+				if m.checked[pullRequest.ID] {
+					delete(m.checked, pullRequest.ID)
+				} else {
+					m.checked[pullRequest.ID] = true
+				}
+				m.statusMessage = ""
+			}
+			return m, nil
+		case "a":
+			m.checked = make(map[string]bool, len(m.pullRequests))
+			for _, pullRequest := range m.pullRequests {
+				m.checked[pullRequest.ID] = true
+			}
+			m.statusMessage = ""
+			return m, nil
+		case "esc":
+			m.checked = make(map[string]bool)
+			m.statusMessage = ""
+			return m, nil
 		case "c":
+			if len(m.checked) > 0 {
+				var checked []app.PullRequest
+				for _, pullRequest := range m.pullRequests {
+					if m.checked[pullRequest.ID] {
+						checked = append(checked, pullRequest)
+					}
+				}
+				success := fmt.Sprintf("Copied %d PRs.", len(checked))
+				if len(checked) == 1 {
+					success = "Copied 1 PR."
+				}
+				return m, m.copyCmd(app.FormatSlackList(checked), success)
+			}
 			pullRequest, ok := m.selectedPullRequest()
 			if !ok {
 				m.statusMessage = "No pull request selected."
@@ -95,25 +137,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		switch msg.Key().Code {
-		case tea.KeyTab:
-			if m.focus == listFocus {
-				m.focus = detailFocus
-			} else {
-				m.focus = listFocus
-			}
 		case tea.KeyDown:
-			if m.focus == detailFocus {
-				m.detailViewport.ScrollDown(1)
-			} else if m.selected < len(m.pullRequests)-1 {
+			if m.selected < len(m.pullRequests)-1 {
 				m.selected++
-				m.syncDetailViewport()
 			}
 		case tea.KeyUp:
-			if m.focus == detailFocus {
-				m.detailViewport.ScrollUp(1)
-			} else if m.selected > 0 {
+			if m.selected > 0 {
 				m.selected--
-				m.syncDetailViewport()
 			}
 		}
 	}

@@ -92,7 +92,7 @@ func (m Model) renderHeader() string {
 func (m Model) renderListPane(width, height int) string {
 	innerWidth := max(0, width-paneFrameWidth)
 	innerHeight := max(0, height-paneBorderHeight)
-	lines := []string{selectedStyle.Render("PULL REQUESTS")}
+	lines := []string{selectedStyle.Render(truncateLine(fmt.Sprintf("PULL REQUESTS · %d selected", len(m.checked)), innerWidth))}
 
 	switch {
 	case m.loading && len(m.pullRequests) == 0:
@@ -109,7 +109,7 @@ func (m Model) renderListPane(width, height int) string {
 		lines = append(lines, "", "No open pull requests.")
 	default:
 		const rowHeight = 3
-		visibleRows := max(1, (innerHeight-1)/rowHeight)
+		visibleRows := max(1, innerHeight/rowHeight)
 		start := 0
 		if m.selected >= visibleRows {
 			start = m.selected - visibleRows + 1
@@ -120,7 +120,7 @@ func (m Model) renderListPane(width, height int) string {
 		}
 	}
 
-	return renderPane(strings.Join(lines, "\n"), width, height, m.focus == listFocus)
+	return renderPane(strings.Join(lines, "\n"), width, height, true)
 }
 
 func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, width int) []string {
@@ -130,13 +130,19 @@ func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, 
 	if selected {
 		marker = "› "
 	}
+	checkbox := "[ ] "
+	if m.checked[pullRequest.ID] {
+		checkbox = "[x] "
+	}
 	state := ""
 	if pullRequest.Draft {
 		state = "  DRAFT"
 	}
-	title := truncateDisplayLine(marker+oneLine(titleText), width)
+	title := truncateDisplayLine(marker+checkbox+oneLine(titleText), width)
 	metadata := truncateDisplayLine(
-		fmt.Sprintf("  %s #%d%s", repositoryText, pullRequest.Number, state),
+		fmt.Sprintf("      %s #%d%s · %s · Checks %s", repositoryText, pullRequest.Number, state,
+			sanitizeTerminalText(string(pullRequest.Review), false),
+			sanitizeTerminalText(string(pullRequest.Checks), false)),
 		width,
 	)
 	if selected {
@@ -151,20 +157,16 @@ func (m Model) renderDetailPane(width, height int) string {
 	lines := []string{selectedStyle.Render("DETAIL")}
 	if m.selected < 0 || m.selected >= len(m.pullRequests) {
 		lines = append(lines, "No pull request selected.")
-		for len(lines) < detailMetadataRows {
-			lines = append(lines, "")
-		}
 	} else {
 		lines = append(
 			lines,
-			renderPullRequestDetailSummary(m.pullRequests[m.selected], innerWidth)...,
+			renderPullRequestDetailSummary(m.pullRequests[m.selected], innerWidth, m.now())...,
 		)
 	}
-	lines = append(lines, m.detailViewport.View())
-	return renderPane(strings.Join(lines, "\n"), width, height, m.focus == detailFocus)
+	return renderPane(strings.Join(lines, "\n"), width, height, false)
 }
 
-func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int) []string {
+func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int, now time.Time) []string {
 	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
 	titleText := sanitizeTerminalText(pullRequest.Title, false)
 	urlText := sanitizeTerminalText(pullRequest.URL, false)
@@ -175,11 +177,14 @@ func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int) []st
 		state = "DRAFT"
 	}
 
-	review := "Review " + reviewText
+	review := "Review   " + reviewText
+	if pullRequest.Review == app.ReviewRequired {
+		review = "Review   required"
+	}
 	if pullRequest.Review == app.ReviewChangesRequested {
 		review = errorStyle.Render(review)
 	}
-	checks := "Checks " + checksText
+	checks := "Checks   " + checksText
 	if pullRequest.Checks == app.ChecksFailing {
 		checks = errorStyle.Render(checks)
 	}
@@ -191,17 +196,12 @@ func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int) []st
 			width,
 		)),
 		"",
-		truncateDisplayLine(review+"  •  "+checks, width),
-		mutedStyle.Render(truncateDisplayLine(
-			fmt.Sprintf(
-				"Created %s  •  Updated %s",
-				pullRequest.CreatedAt.UTC().Format("2006-01-02 15:04 MST"),
-				pullRequest.UpdatedAt.UTC().Format("2006-01-02 15:04 MST"),
-			),
-			width,
-		)),
-		mutedStyle.Render(truncateLine(urlText, width)),
+		truncateDisplayLine(review, width),
+		truncateDisplayLine(checks, width),
 		"",
+		mutedStyle.Render(truncateDisplayLine("Created  "+relativeAge(now, pullRequest.CreatedAt), width)),
+		mutedStyle.Render(truncateDisplayLine("Updated  "+relativeAge(now, pullRequest.UpdatedAt), width)),
+		mutedStyle.Render(truncateLine(urlText, width)),
 	}
 }
 
@@ -228,13 +228,19 @@ func (m Model) renderFooter() string {
 }
 
 func (m Model) footerText() string {
-	help := "↑/↓ move Tab focus o open c copy C all r refresh ? help q quit"
+	copyLabel := "c copy URL"
+	if len(m.checked) > 0 {
+		copyLabel = fmt.Sprintf("c copy %d selected", len(m.checked))
+	}
+	help := "↑/↓ move Space select a all Esc clear " + copyLabel + " o open r refresh ? help q quit"
 	if m.showHelp {
 		help = wrapBindings([]string{
-			"↑/↓ move or scroll",
-			"Tab switch focus",
+			"↑/↓ move",
+			"Space toggle checkbox",
+			"a select all",
+			"Esc clear selection",
 			"o open",
-			"c copy URL",
+			copyLabel,
 			"C copy all as Slack",
 			"r refresh",
 			"? compact help",
@@ -285,6 +291,8 @@ func (m Model) now() time.Time {
 }
 
 func renderPane(content string, width, height int, focused bool) string {
+	lines := strings.Split(content, "\n")
+	content = strings.Join(lines[:min(len(lines), max(0, height-paneBorderHeight))], "\n")
 	borderColor := mutedColor
 	if focused {
 		borderColor = accentColor

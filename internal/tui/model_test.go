@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -217,33 +216,7 @@ func TestEmptyRefreshAndFailedFirstRefreshHaveDistinctState(t *testing.T) {
 	}
 }
 
-func TestTabTogglesListAndDetailFocus(t *testing.T) {
-	cached := testSnapshot(testPullRequest("PR_one", "acme/api", 1))
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-	if model.focus != listFocus {
-		t.Fatalf("initial focus = %v, want list focus", model.focus)
-	}
-
-	nextModel, _ := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-	next := nextModel.(Model)
-	if next.focus != detailFocus {
-		t.Fatalf("focus after first Tab = %v, want detail focus", next.focus)
-	}
-
-	nextModel, _ = next.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-	next = nextModel.(Model)
-	if next.focus != listFocus {
-		t.Fatalf("focus after second Tab = %v, want list focus", next.focus)
-	}
-}
-
-func TestArrowKeysMoveSelectionInListFocus(t *testing.T) {
+func TestArrowKeysMoveHighlight(t *testing.T) {
 	cached := testSnapshot(
 		testPullRequest("PR_one", "acme/api", 1),
 		testPullRequest("PR_two", "acme/api", 2),
@@ -272,96 +245,6 @@ func TestArrowKeysMoveSelectionInListFocus(t *testing.T) {
 	}
 }
 
-func TestArrowKeysScrollViewportInDetailFocus(t *testing.T) {
-	pullRequest := testPullRequest("PR_one", "acme/api", 1)
-	pullRequest.Body = strings.Join([]string{
-		"line 1", "line 2", "line 3", "line 4", "line 5",
-		"line 6", "line 7", "line 8", "line 9", "line 10",
-	}, "\n")
-	cached := testSnapshot(pullRequest)
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-	model.detailViewport.SetWidth(40)
-	model.detailViewport.SetHeight(3)
-	model.focus = detailFocus
-
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	if got := model.detailViewport.YOffset(); got != 1 {
-		t.Fatalf("detail viewport offset after Down = %d, want 1", got)
-	}
-	if model.selected != 0 {
-		t.Fatalf("selected index in detail focus = %d, want 0", model.selected)
-	}
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
-	if got := model.detailViewport.YOffset(); got != 0 {
-		t.Fatalf("detail viewport offset after Up = %d, want 0", got)
-	}
-}
-
-func TestMovingListSelectionReplacesDetailAndResetsScroll(t *testing.T) {
-	first := testPullRequest("PR_one", "acme/api", 1)
-	first.Body = "first line\nsecond line\nthird line"
-	second := testPullRequest("PR_two", "acme/api", 2)
-	second.Body = "replacement detail"
-	cached := testSnapshot(first, second)
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-	model.detailViewport.SetWidth(40)
-	model.detailViewport.SetHeight(1)
-	model.detailViewport.ScrollDown(1)
-	if model.detailViewport.YOffset() == 0 {
-		t.Fatal("test setup did not scroll initial detail")
-	}
-
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-
-	if got := model.detailViewport.GetContent(); got != second.Body {
-		t.Fatalf("detail content = %q, want %q", got, second.Body)
-	}
-	if got := model.detailViewport.YOffset(); got != 0 {
-		t.Fatalf("detail viewport offset after selection = %d, want 0", got)
-	}
-}
-
-func TestRefreshReplacesSelectedDetailAndResetsScroll(t *testing.T) {
-	selected := testPullRequest("PR_one", "acme/api", 1)
-	selected.Body = "old first\nold second\nold third"
-	cached := testSnapshot(selected)
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-	model.detailViewport.SetWidth(40)
-	model.detailViewport.SetHeight(1)
-	model.detailViewport.ScrollDown(1)
-	refreshed := selected
-	refreshed.Body = "new detail"
-
-	model = updateModel(t, model, refreshDoneMsg{
-		result: app.RefreshResult{Snapshot: testSnapshot(refreshed)},
-	})
-
-	if got := model.detailViewport.GetContent(); got != refreshed.Body {
-		t.Fatalf("detail content after refresh = %q, want %q", got, refreshed.Body)
-	}
-	if got := model.detailViewport.YOffset(); got != 0 {
-		t.Fatalf("detail viewport offset after refresh = %d, want 0", got)
-	}
-}
-
 func TestEnterLeavesModelUnchangedAndReturnsNoCommand(t *testing.T) {
 	cached := testSnapshot(testPullRequest("PR_one", "acme/api", 1))
 	model := NewModel(
@@ -387,77 +270,8 @@ func TestEnterLeavesModelUnchangedAndReturnsNoCommand(t *testing.T) {
 		got.stale != before.stale ||
 		got.refreshErr != before.refreshErr ||
 		got.selected != before.selected ||
-		got.focus != before.focus ||
-		got.detailViewport.GetContent() != before.detailViewport.GetContent() ||
-		got.detailViewport.YOffset() != before.detailViewport.YOffset() {
+		!reflect.DeepEqual(got.checked, before.checked) {
 		t.Fatal("Enter changed model state")
-	}
-}
-
-func TestWindowResizeUpdatesDimensionsAndDetailViewport(t *testing.T) {
-	cached := testSnapshot(testPullRequest("PR_one", "acme/api", 1))
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-
-	model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
-	if model.width != 120 || model.height != 32 {
-		t.Fatalf("wide dimensions = %dx%d, want 120x32", model.width, model.height)
-	}
-	if got := model.detailViewport.Width(); got != 68 {
-		t.Fatalf("wide detail viewport width = %d, want 68", got)
-	}
-	if got := model.detailViewport.Height(); got != 19 {
-		t.Fatalf("wide detail viewport height = %d, want 19", got)
-	}
-
-	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
-	if model.width != 80 || model.height != 32 {
-		t.Fatalf("narrow dimensions = %dx%d, want 80x32", model.width, model.height)
-	}
-	if got := model.detailViewport.Width(); got != 76 {
-		t.Fatalf("narrow detail viewport width = %d, want 76", got)
-	}
-	if got := model.detailViewport.Height(); got != 5 {
-		t.Fatalf("narrow detail viewport height = %d, want 5", got)
-	}
-}
-
-func TestResizeBreaksOverlongDetailTokenIntoReachableViewportLines(t *testing.T) {
-	token := strings.Repeat("x", 120)
-	pullRequest := testPullRequest("PR_one", "acme/api", 1)
-	pullRequest.Body = token
-	cached := testSnapshot(pullRequest)
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		testDependencies(),
-	)
-
-	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
-
-	contentLines := strings.Split(model.detailViewport.GetContent(), "\n")
-	if len(contentLines) < 2 {
-		t.Fatalf("wrapped detail lines = %d, want at least 2", len(contentLines))
-	}
-	for index, line := range contentLines {
-		if got := ansi.StringWidth(line); got > model.detailViewport.Width() {
-			t.Errorf(
-				"detail line %d width = %d, want at most viewport width %d",
-				index+1,
-				got,
-				model.detailViewport.Width(),
-			)
-		}
-	}
-	if got := strings.Join(contentLines, ""); got != token {
-		t.Fatalf("vertically reachable detail content length = %d, want %d", len(got), len(token))
 	}
 }
 
@@ -571,6 +385,7 @@ func TestActionOpenSelectedURL(t *testing.T) {
 		deps,
 	)
 	model.selected = 1
+	model.checked[first.ID] = true
 
 	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "o", Code: 'o'}))
 	if cmd == nil {
@@ -963,48 +778,6 @@ func TestHelpKeyTogglesExpandedHelp(t *testing.T) {
 	}
 }
 
-func TestHelpTogglePreservesScrolledDetailPosition(t *testing.T) {
-	pullRequest := testPullRequest("PR_one", "acme/api", 1)
-	bodyLines := make([]string, 24)
-	for index := range bodyLines {
-		bodyLines[index] = fmt.Sprintf("detail line %02d", index+1)
-	}
-	pullRequest.Body = strings.Join(bodyLines, "\n")
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		snapshotPointer(testSnapshot(pullRequest)),
-		nil,
-		testDependencies(),
-	)
-	model = updateModel(t, model, tea.WindowSizeMsg{Width: 80, Height: 32})
-	model.focus = detailFocus
-	for range 5 {
-		model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	}
-	scrolledOffset := model.detailViewport.YOffset()
-	if scrolledOffset == 0 {
-		t.Fatal("test setup did not scroll the detail viewport")
-	}
-	compactHeight := model.detailViewport.Height()
-
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
-	if got := model.detailViewport.YOffset(); got != scrolledOffset {
-		t.Fatalf("offset after expanding help = %d, want %d", got, scrolledOffset)
-	}
-	if got := model.detailViewport.Height(); got != compactHeight-1 {
-		t.Fatalf("height after expanding help = %d, want %d", got, compactHeight-1)
-	}
-
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
-	if got := model.detailViewport.YOffset(); got != scrolledOffset {
-		t.Fatalf("offset after compacting help = %d, want %d", got, scrolledOffset)
-	}
-	if got := model.detailViewport.Height(); got != compactHeight {
-		t.Fatalf("height after compacting help = %d, want %d", got, compactHeight)
-	}
-}
-
 func TestQuitKeyReturnsTeaQuit(t *testing.T) {
 	model := NewModel(
 		context.Background(),
@@ -1063,5 +836,98 @@ func testPullRequest(id, repository string, number int) app.PullRequest {
 		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
 		Review:     app.ReviewRequired,
 		Checks:     app.ChecksPending,
+	}
+}
+
+func TestCheckboxesAreIndependentOfHighlight(t *testing.T) {
+	model := renderTestModel()
+	space := tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "})
+	model = updateModel(t, model, space)
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
+	if !model.checked["PR_api_184"] || model.checked["PR_web_92"] || model.selected != 1 {
+		t.Fatalf("moving highlight changed checkboxes: %#v, highlight %d", model.checked, model.selected)
+	}
+	if detail := ansi.Strip(model.renderDetailPane(80, 12)); !strings.Contains(detail, "Add invoice filters") || strings.Contains(detail, "Fix session refresh") {
+		t.Fatalf("detail does not follow highlight: %s", detail)
+	}
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
+	model = updateModel(t, model, space)
+	if len(model.checked) != 0 {
+		t.Fatalf("second Space did not uncheck: %#v", model.checked)
+	}
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
+	if len(model.checked) != 2 {
+		t.Fatalf("select all checked %d PRs, want 2", len(model.checked))
+	}
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	if len(model.checked) != 0 {
+		t.Fatalf("Esc did not clear checkboxes: %#v", model.checked)
+	}
+}
+
+func TestCheckedCopyUsesDashboardOrderAndKeepsSelection(t *testing.T) {
+	model := renderTestModel()
+	third := testPullRequest("PR_three", "acme/api", 3)
+	model.pullRequests = append(model.pullRequests, third)
+	space := tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "})
+	model.selected = 2
+	model = updateModel(t, model, space)
+	model.selected = 0
+	model = updateModel(t, model, space)
+	model.selected = 1 // The highlighted PR is not checked.
+	copied := ""
+	model.deps.Copy = func(_ context.Context, text string) error { copied = text; return nil }
+	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
+	if cmd == nil {
+		t.Fatal("checked copy returned no command")
+	}
+	next, _ = next.Update(cmd())
+	model = next.(Model)
+	want := app.FormatSlackList([]app.PullRequest{model.pullRequests[0], third})
+	if copied != want {
+		t.Fatalf("copied %q, want %q", copied, want)
+	}
+	if model.statusMessage != "Copied 2 PRs." || len(model.checked) != 2 {
+		t.Fatalf("copy result: status %q, checkboxes %#v", model.statusMessage, model.checked)
+	}
+	model.selected = 0
+	model = updateModel(t, model, space)
+	next, cmd = model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
+	if cmd == nil {
+		t.Fatal("single checked copy returned no command")
+	}
+	next, _ = next.Update(cmd())
+	if copied != app.FormatSlackList([]app.PullRequest{third}) || next.(Model).statusMessage != "Copied 1 PR." {
+		t.Fatalf("single checked copy = %q, status %q", copied, next.(Model).statusMessage)
+	}
+}
+
+func TestRefreshPreservesCheckboxesByIDAndDropsRemovedPRs(t *testing.T) {
+	model := renderTestModel()
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
+	model = updateModel(t, model, refreshDoneMsg{err: errors.New("offline")})
+	if len(model.checked) != 2 {
+		t.Fatal("failed refresh cleared checkboxes")
+	}
+	remaining := model.pullRequests[0]
+	remaining.Title = "Updated title"
+	fresh := testPullRequest("PR_new", "acme/api", 3)
+	model = updateModel(t, model, refreshDoneMsg{result: app.RefreshResult{Snapshot: testSnapshot(fresh, remaining)}})
+	if len(model.checked) != 1 || !model.checked[remaining.ID] || model.selected != 1 {
+		t.Fatalf("refresh lost selection: checked %#v, highlight %d", model.checked, model.selected)
+	}
+	if detail := ansi.Strip(model.renderDetailPane(80, 12)); !strings.Contains(detail, remaining.Title) {
+		t.Fatalf("refresh did not update detail: %s", detail)
+	}
+	model = updateModel(t, model, refreshDoneMsg{result: app.RefreshResult{Snapshot: testSnapshot()}})
+	if len(model.checked) != 0 {
+		t.Fatal("empty refresh retained removed PRs")
+	}
+	for _, key := range []tea.Key{{Code: tea.KeySpace, Text: " "}, {Code: 'a', Text: "a"}, {Code: tea.KeyEscape}} {
+		model = updateModel(t, model, tea.KeyPressMsg(key))
+		if len(model.checked) != 0 {
+			t.Fatal("empty list acquired checkboxes")
+		}
 	}
 }

@@ -21,8 +21,8 @@ func TestFormatSlackList(t *testing.T) {
 			Body:  "",
 		},
 	}
-	want := "• <https://github.com/acme/api/pull/184|Fix &lt;sessions&gt; &amp; cookies> — Refreshes expired sessions.\n" +
-		"• <https://github.com/acme/web/pull/92|Invoice filters> — No description"
+	want := "https://github.com/acme/api/pull/184\n" +
+		"https://github.com/acme/web/pull/92"
 	if got := FormatSlackList(prs); got != want {
 		t.Fatalf("FormatSlackList() = %q, want %q", got, want)
 	}

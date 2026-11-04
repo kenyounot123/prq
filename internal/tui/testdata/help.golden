@@ -1,32 +1,32 @@
 PRQ • 2 pull requests • refreshing • last updated <age>
-╭─────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────╮
-│ PULL REQUESTS                               │ │ DETAIL                                                               │
-│ › Fix session refresh                       │ │ Fix session refresh                                                  │
-│   acme/api #184                             │ │ acme/api #184  •  OPEN                                               │
-│                                             │ │                                                                      │
-│   Add invoice filters                       │ │ Review approved  •  Checks passing                                   │
-│   acme/web #92  DRAFT                       │ │ Created 2026-07-20 12:00 UTC  •  Updated 2026-07-29 12:00 UTC        │
-│                                             │ │ https://github.com/acme/api/pull/184                                 │
-│                                             │ │                                                                      │
-│                                             │ │ Refreshes expired sessions without forcing a new login, dropping     │
-│                                             │ │ cookies, or losing unsaved work.                                     │
-│                                             │ │                                                                      │
-│                                             │ │ ## Notes                                                             │
-│                                             │ │ Preserves Markdown source.                                           │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-╰─────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────╮
+│ PULL REQUESTS · 0 selected                                          │ │ DETAIL                                       │
+│ › [ ] Fix session refresh                                           │ │ Fix session refresh                          │
+│       acme/api #184 · approved · Checks passing                     │ │ acme/api #184  •  OPEN                       │
+│                                                                     │ │                                              │
+│   [ ] Add invoice filters                                           │ │ Review   approved                            │
+│       acme/web #92  DRAFT · changes requested · Checks failing      │ │ Checks   passing                             │
+│                                                                     │ │                                              │
+│                                                                     │ │ Created  <age>                             │
+│                                                                     │ │ Updated  <age>                              │
+│                                                                     │ │ https://github.com/acme/api/pull/184         │
+│                                                                     │ ╰──────────────────────────────────────────────╯
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+╰─────────────────────────────────────────────────────────────────────╯
 
-↑/↓ move or scroll Tab switch focus o open c copy URL C copy all as Slack r refresh ? compact help q quit
+↑/↓ move Space toggle checkbox a select all Esc clear selection o open c copy URL C copy all as Slack r refresh
+? compact help q quit

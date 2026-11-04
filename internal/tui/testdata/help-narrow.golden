@@ -1,11 +1,13 @@
 PRQ • 2 pull requests • refreshing • last updated <age>
 ╭──────────────────────────────────────────────────────────────────────────────╮
-│ PULL REQUESTS                                                                │
-│ › Fix session refresh                                                        │
-│   acme/api #184                                                              │
+│ PULL REQUESTS · 0 selected                                                   │
+│ › [ ] Fix session refresh                                                    │
+│       acme/api #184 · approved · Checks passing                              │
 │                                                                              │
-│   Add invoice filters                                                        │
-│   acme/web #92  DRAFT                                                        │
+│   [ ] Add invoice filters                                                    │
+│       acme/web #92  DRAFT · changes requested · Checks failing               │
+│                                                                              │
+│                                                                              │
 │                                                                              │
 │                                                                              │
 │                                                                              │
@@ -18,15 +20,13 @@ PRQ • 2 pull requests • refreshing • last updated <age>
 │ Fix session refresh                                                          │
 │ acme/api #184  •  OPEN                                                       │
 │                                                                              │
-│ Review approved  •  Checks passing                                           │
-│ Created 2026-07-20 12:00 UTC  •  Updated 2026-07-29 12:00 UTC                │
+│ Review   approved                                                            │
+│ Checks   passing                                                             │
+│                                                                              │
+│ Created  <age>                                                             │
+│ Updated  <age>                                                              │
 │ https://github.com/acme/api/pull/184                                         │
-│                                                                              │
-│ Refreshes expired sessions without forcing a new login, dropping cookies, or │
-│ losing unsaved work.                                                         │
-│                                                                              │
-│ ## Notes                                                                     │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
-↑/↓ move or scroll Tab switch focus o open c copy URL C copy all as Slack
-r refresh ? compact help q quit
+↑/↓ move Space toggle checkbox a select all Esc clear selection o open
+c copy URL C copy all as Slack r refresh ? compact help q quit

@@ -1,32 +1,32 @@
 PRQ • 0 pull requests • error • last updated never
-╭─────────────────────────────────────────────╮ ╭──────────────────────────────────────────────────────────────────────╮
-│ PULL REQUESTS                               │ │ DETAIL                                                               │
-│                                             │ │ No pull request selected.                                            │
-│ Refresh failed: network unavailable         │ │                                                                      │
-│ Press r to retry or q to quit.              │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-│                                             │ │                                                                      │
-╰─────────────────────────────────────────────╯ ╰──────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────╮
+│ PULL REQUESTS · 0 selected                                          │ │ DETAIL                                       │
+│                                                                     │ │ No pull request selected.                    │
+│ Refresh failed: network unavailable                                 │ │                                              │
+│ Press r to retry or q to quit.                                      │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ │                                              │
+│                                                                     │ ╰──────────────────────────────────────────────╯
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+│                                                                     │
+╰─────────────────────────────────────────────────────────────────────╯
 
-↑/↓ move Tab focus o open c copy C all r refresh ? help q quit
+↑/↓ move Space select a all Esc clear c copy URL o open r refresh ? help q quit
