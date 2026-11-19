@@ -6,10 +6,13 @@ authored across a selected set of GitHub repositories.
 ## What PRQ does
 
 PRQ restores pull request context without making you keep a browser dashboard
-open. It shows open pull requests authored by the current GitHub user, including
-drafts, with review decisions, check states, and update times. Checkboxes let
-you select a subset to copy. A compact detail card shows the highlighted pull
-request's status, relative creation/update times, and URL.
+open. It shows open pull requests authored by the current GitHub user, grouped
+by what you can do about them: blocked by failing checks or requested changes,
+ready to merge, waiting on review, and drafts (collapsed by default). Each pull
+request takes one row. Checkboxes let you select a subset to copy, and a purple
+tray shows the selection while anything is checked. A full-height detail pane
+shows the highlighted pull request's review, checks, branch, age, and
+description.
 
 The dashboard displays cached results immediately, refreshes from GitHub in the
 background, and keeps usable cached data visible if a refresh fails.
@@ -130,23 +133,25 @@ timestamps.
 | Key | Action |
 | --- | --- |
 | `↑` / `↓` | Move the highlighted pull request |
+| `Tab` | Jump to the first pull request of the next group, wrapping around |
+| `Enter` | Collapse the highlighted pull request's group, or expand a collapsed group from its header |
 | `Space` | Check or uncheck the highlighted pull request |
-| `a` | Check all displayed pull requests |
+| `a` | Check all pull requests, including those in collapsed groups |
 | `Esc` | Clear all checkboxes |
 | `o` | Open the highlighted pull request in the default browser |
 | `c` | Copy checked pull request URLs; when none are checked, copy the highlighted URL |
-| `C` | Copy all displayed pull request URLs |
+| `C` | Copy all pull request URLs, including those in collapsed groups |
 | `r` | Refresh from GitHub |
 | `?` | Toggle full key help |
 | `q` | Quit |
 
-Moving the highlight updates the detail card without changing any checkboxes.
+Moving the highlight updates the detail pane without changing any checkboxes.
 Checkboxes stay checked after copying and refreshing; PRs that disappear from
 the refreshed list are removed from the selection. Selections last for the
 current session. The footer shows whether `c` will copy a URL or selected PRs.
-`Enter` and `Tab` have no dashboard action.
 
-Selected and bulk copy follow dashboard order and produce one URL per line:
+Selected and bulk copy follow the grouped dashboard order (blocked, ready to
+merge, waiting on review, then drafts) and produce one URL per line:
 
 ```text
 https://github.com/acme/api/pull/184
