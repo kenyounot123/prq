@@ -3,10 +3,9 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +14,42 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/kenyounot123/prq/internal/app"
 )
+
+func renderedLines(t *testing.T, model Model) []string {
+	t.Helper()
+	return strings.Split(ansi.Strip(model.View().Content), "\n")
+}
+
+func assertFitsTerminal(t *testing.T, model Model, label string) {
+	t.Helper()
+	lines := renderedLines(t, model)
+	if len(lines) != model.height {
+		t.Errorf("%s: render height = %d rows, want %d", label, len(lines), model.height)
+	}
+	for index, line := range lines {
+		if got := ansi.StringWidth(line); got != model.width {
+			t.Errorf("%s: line %d width = %d, want %d: %q", label, index+1, got, model.width, line)
+		}
+	}
+}
+
+func assertGolden(t *testing.T, name, raw string) {
+	t.Helper()
+	normalized := normalizeRender(raw)
+	goldenPath := filepath.Join("testdata", name)
+	if os.Getenv("UPDATE_GOLDEN") == "1" {
+		if err := os.WriteFile(goldenPath, []byte(normalized), 0o644); err != nil {
+			t.Fatalf("write golden: %v", err)
+		}
+	}
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("read golden: %v", err)
+	}
+	if normalized != string(want) {
+		t.Fatalf("render differs from %s\n--- got ---\n%s\n--- want ---\n%s", name, normalized, want)
+	}
+}
 
 func TestRenderWideAndNarrowLayouts(t *testing.T) {
 	tests := []struct {
@@ -30,7 +65,9 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			model := renderTestModel()
-			model.checked["PR_web_92"] = true
+			model.checked["PR_web_77"] = true
+			model.checked["PR_api_184"] = true
+			model = selectPullRequest(t, model, "PR_api_190")
 			model = updateModel(t, model, tea.WindowSizeMsg{Width: tt.width, Height: 32})
 
 			view := model.View()
@@ -40,148 +77,137 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 			if view.WindowTitle != "prq" {
 				t.Fatalf("window title = %q, want prq", view.WindowTitle)
 			}
+			assertFitsTerminal(t, model, tt.name)
 
-			raw := view.Content
-			lines := strings.Split(strings.TrimSuffix(ansi.Strip(raw), "\n"), "\n")
-			if len(lines) != 32 {
-				t.Errorf("render height = %d rows, want 32; final rows = %q", len(lines), lines[max(0, len(lines)-4):])
-			}
-			for index, line := range lines {
-				if got := ansi.StringWidth(line); got != tt.width {
-					t.Errorf("line %d width = %d, want %d", index+1, got, tt.width)
-				}
-			}
+			stripped := ansi.Strip(view.Content)
 			for _, required := range []string{
-				"2 pull requests",
-				"refreshing",
-				"acme/api #184",
-				"Fix session refresh",
-				"acme/web #92",
-				"DRAFT",
-				"Created  10d ago",
-				"Updated  1d ago",
-				"https://github.com/acme/api/pull/184",
-				"↑/↓ move",
-				"Space select",
-				"? help",
+				"● 1 ready", "○ 2 review", "✗ 2 blocked", "◇ 1 draft",
+				"2 selected", "synced 8m ago",
+				"✗ BLOCKED", "● READY TO MERGE", "○ WAITING ON REVIEW", "▸ ◇ DRAFT",
+				"api#201", "web#77", "Cache session lookups",
+				"acme/api #190", "DESCRIPTION", "Adds a short lived cache.",
+				"↑↓ move", "tab next group", "space select", "c copy 2", "? more",
 			} {
-				if !strings.Contains(ansi.Strip(raw), required) {
+				if !strings.Contains(stripped, required) {
 					t.Errorf("render missing %q", required)
 				}
 			}
-
-			listLine := lineContaining(ansi.Strip(raw), "PULL REQUESTS")
-			detailLine := lineContaining(ansi.Strip(raw), "DETAIL")
-			if listLine < 0 || detailLine < 0 {
-				t.Fatalf("pane headings not found: list=%d detail=%d", listLine, detailLine)
+			if strings.Contains(stripped, "Add invoice filters") {
+				t.Error("collapsed draft group lists its pull requests")
 			}
+
+			listLine := lineContaining(stripped, "BLOCKED")
+			detailLine := lineContaining(stripped, "acme/api #190")
 			if tt.stacked && detailLine <= listLine {
 				t.Fatalf("narrow detail line %d is not below list line %d", detailLine, listLine)
 			}
 			if !tt.stacked && detailLine != listLine {
 				t.Fatalf("wide detail line %d is not beside list line %d", detailLine, listLine)
 			}
+			assertGolden(t, tt.goldenFile, view.Content)
+		})
+	}
+}
 
-			normalized := normalizeRender(raw)
-			goldenPath := filepath.Join("testdata", tt.goldenFile)
-			if os.Getenv("UPDATE_GOLDEN") == "1" {
-				if err := os.WriteFile(goldenPath, []byte(normalized), 0o644); err != nil {
-					t.Fatalf("write golden: %v", err)
+func TestRenderFitsTerminalAtEverySize(t *testing.T) {
+	for _, width := range []int{12, 30, 60, 80, 99, 100, 120, 180} {
+		for _, height := range []int{6, 12, 20, 40} {
+			for _, help := range []bool{false, true} {
+				for _, checked := range []int{0, 1, 4} {
+					model := renderTestModel()
+					model.showHelp = help
+					model.status = statusLine{text: "Copied 3 PRs.", kind: statusSuccess}
+					for _, pullRequest := range model.pullRequests[:checked] {
+						model.checked[pullRequest.ID] = true
+					}
+					model.resize(width, height)
+					rendered := ansi.Strip(model.View().Content)
+					for index, line := range strings.Split(rendered, "\n") {
+						if got := ansi.StringWidth(line); got != width {
+							t.Fatalf("%dx%d help=%v checked=%d: line %d width = %d: %q", width, height, help, checked, index+1, got, line)
+						}
+					}
+					if got := strings.Count(rendered, "\n") + 1; got < height {
+						t.Fatalf("%dx%d help=%v checked=%d: rendered %d rows, want at least %d", width, height, help, checked, got, height)
+					}
 				}
 			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("read golden: %v", err)
-			}
-			if normalized != string(want) {
-				t.Fatalf("render differs from %s\n--- got ---\n%s\n--- want ---\n%s", tt.goldenFile, normalized, want)
+		}
+	}
+}
+
+func TestRenderBeforeFirstWindowSizeDoesNotPanic(t *testing.T) {
+	_ = renderTestModel().View()
+}
+
+func TestRenderListRowShowsLabelTitleAndReasonColumn(t *testing.T) {
+	model := renderTestModel()
+	model.resize(120, 32)
+	rendered := ansi.Strip(model.View().Content)
+
+	rows := map[string]string{
+		"api#201": "checks",
+		"web#77":  "changes",
+		"api#190": "◌ ci",
+		"api#184": "10d",
+		"web#85":  "1d",
+	}
+	for label, want := range rows {
+		line := rendered[strings.Index(rendered, label):]
+		line = line[:strings.Index(line, "\n")]
+		listPart, _, _ := strings.Cut(line, "│")
+		if !strings.HasSuffix(strings.TrimRight(listPart, " "), want) {
+			t.Errorf("row %q = %q, want right column %q", label, listPart, want)
+		}
+	}
+	if strings.Contains(rendered, "acme/api#201") {
+		t.Error("list label includes the owner")
+	}
+	listPart, _, _ := strings.Cut(rendered[strings.Index(rendered, "api#201"):], "│")
+	if !strings.Contains(listPart, "Rotate signing keys") || !strings.Contains(listPart, "…") {
+		t.Errorf("long title row = %q, want a truncated title ending in an ellipsis", listPart)
+	}
+}
+
+func TestRenderSyncStates(t *testing.T) {
+	tests := []struct {
+		name  string
+		model func() Model
+		want  string
+	}{
+		{"synced", renderTestModel, "synced 8m ago"},
+		{"refreshing with data", func() Model {
+			model := renderTestModel()
+			model.refreshing = true
+			return model
+		}, "refreshing · synced 8m ago"},
+		{"stale", func() Model {
+			return updateModel(t, renderTestModel(), refreshDoneMsg{err: errors.New("offline")})
+		}, "stale · synced 8m ago"},
+		{"first sync", func() Model {
+			return NewModel(context.Background(), app.Selection{}, nil, nil, testDependencies())
+		}, "syncing…"},
+		{"first sync failed", func() Model {
+			model := NewModel(context.Background(), app.Selection{}, nil, nil, testDependencies())
+			return updateModel(t, model, refreshDoneMsg{err: errors.New("offline")})
+		}, "never synced"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			model := updateModel(t, tt.model(), tea.WindowSizeMsg{Width: 120, Height: 32})
+			header := renderedLines(t, model)[0]
+			if !strings.HasSuffix(strings.TrimRight(header, " "), tt.want) {
+				t.Fatalf("header = %q, want it to end with %q", header, tt.want)
 			}
 		})
 	}
 }
 
-func TestRenderPullRequestRowUsesTitleFirstVisualHierarchy(t *testing.T) {
-	pullRequest := app.PullRequest{
-		Repository: "acme/api",
-		Number:     184,
-		Title:      "Fix session refresh",
-		Body:       "Description must not appear in the list.",
-		Draft:      true,
-		Review:     app.ReviewApproved,
-		Checks:     app.ChecksPassing,
-		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
-	}
-
-	got := (Model{}).renderPullRequestRow(pullRequest, true, 80)
-	want := []string{
-		selectedStyle.Render("› [ ] Fix session refresh"),
-		mutedStyle.Render("      acme/api #184  DRAFT · approved · Checks passing"),
-		"",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("renderPullRequestRow() = %#v, want %#v", got, want)
-	}
-}
-
-func TestRenderListPaneFitsThreeCompactRows(t *testing.T) {
-	model := Model{
-		pullRequests: []app.PullRequest{
-			{Title: "First pull request"},
-			{Title: "Second pull request"},
-			{Title: "Third pull request"},
-		},
-		selected: 2,
-	}
-
-	rendered := ansi.Strip(model.renderListPane(40, 12))
-	for _, title := range []string{
-		"First pull request",
-		"Second pull request",
-		"Third pull request",
-	} {
-		if !strings.Contains(rendered, title) {
-			t.Errorf("compact list missing %q:\n%s", title, rendered)
-		}
-	}
-}
-
-func TestRenderPullRequestDetailSummaryUsesGroupedVisualHierarchy(t *testing.T) {
-	pullRequest := app.PullRequest{
-		Repository: "acme/api",
-		Number:     184,
-		Title:      "Fix session refresh",
-		URL:        "https://github.com/acme/api/pull/184",
-		CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
-		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
-		Review:     app.ReviewChangesRequested,
-		Checks:     app.ChecksFailing,
-	}
-
-	got := renderPullRequestDetailSummary(pullRequest, 120, time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC))
-	want := []string{
-		selectedStyle.Render("Fix session refresh"),
-		mutedStyle.Render("acme/api #184  •  OPEN"),
-		"",
-		errorStyle.Render("Review   changes requested"),
-		errorStyle.Render("Checks   failing"),
-		"",
-		mutedStyle.Render("Created  10d ago"),
-		mutedStyle.Render("Updated  1d ago"),
-		mutedStyle.Render("https://github.com/acme/api/pull/184"),
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("renderPullRequestDetailSummary() = %#v, want %#v", got, want)
-	}
-
-	pullRequest.Review = app.ReviewApproved
-	pullRequest.Checks = app.ChecksPassing
-	got = renderPullRequestDetailSummary(pullRequest, 120, time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC))
-	if got[3] != "Review   approved" || got[4] != "Checks   passing" {
-		t.Fatalf("neutral status line = %q, want unstyled neutral statuses", got[3])
-	}
-}
-
 func TestRenderRefreshAndHelpStates(t *testing.T) {
+	helpBindings := []string{
+		"↑↓ move", "tab next group", "enter expand", "space select", "a select all",
+		"esc clear", "c copy url", "C copy all as Slack", "o open", "r refresh", "q quit",
+	}
 	tests := []struct {
 		name       string
 		goldenFile string
@@ -194,16 +220,9 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 			goldenFile: "stale.golden",
 			width:      120,
 			model: func() Model {
-				model := renderTestModel()
-				return updateModel(t, model, refreshDoneMsg{err: errors.New("network unavailable")})
+				return updateModel(t, renderTestModel(), refreshDoneMsg{err: errors.New("network unavailable")})
 			},
-			required: []string{
-				"2 pull requests",
-				"stale",
-				"last updated",
-				"acme/api #184",
-				"Refresh failed: network unavailable",
-			},
+			required: []string{"stale · synced 8m ago", "api#184", "Refresh failed: network unavailable"},
 		},
 		{
 			name:       "first refresh failure",
@@ -219,62 +238,62 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 				)
 				return updateModel(t, model, refreshDoneMsg{err: errors.New("network unavailable")})
 			},
-			required: []string{
-				"0 pull requests",
-				"error",
-				"last updated never",
-				"Refresh failed: network unavailable",
-				"Press r to retry or q to quit.",
+			required: []string{"never synced", "Refresh failed: network unavailable", "Press r to retry or q to quit."},
+		},
+		{
+			name:       "loading",
+			goldenFile: "loading.golden",
+			width:      120,
+			model: func() Model {
+				return NewModel(
+					context.Background(),
+					app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+					nil,
+					nil,
+					testDependencies(),
+				)
 			},
+			required: []string{"syncing…", "Loading pull requests…"},
+		},
+		{
+			name:       "empty",
+			goldenFile: "empty.golden",
+			width:      120,
+			model: func() Model {
+				model := NewModel(
+					context.Background(),
+					app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
+					snapshotPointer(testSnapshot()),
+					nil,
+					testDependencies(),
+				)
+				return updateModel(t, model, refreshDoneMsg{result: app.RefreshResult{Snapshot: testSnapshot()}})
+			},
+			required: []string{"No open pull requests."},
 		},
 		{
 			name:       "expanded help",
 			goldenFile: "help.golden",
 			width:      120,
 			model: func() Model {
-				model := renderTestModel()
-				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+				return updateModel(t, renderTestModel(), tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
 			},
-			required: []string{
-				"↑/↓ move",
-				"Space toggle checkbox",
-				"a select all",
-				"Esc clear selection",
-				"o open",
-				"c copy URL",
-				"C copy all as Slack",
-				"r refresh",
-				"? compact help",
-				"q quit",
-			},
+			required: append([]string{"? less"}, helpBindings...),
 		},
 		{
 			name:       "expanded help narrow",
 			goldenFile: "help-narrow.golden",
-			width:      80,
+			width:      60,
 			model: func() Model {
-				model := renderTestModel()
-				return updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
+				return updateModel(t, renderTestModel(), tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
 			},
-			required: []string{
-				"↑/↓ move",
-				"Space toggle checkbox",
-				"a select all",
-				"Esc clear selection",
-				"o open",
-				"c copy URL",
-				"C copy all as Slack",
-				"r refresh",
-				"? compact help",
-				"q quit",
-			},
+			required: append([]string{"? less"}, helpBindings...),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			model := tt.model()
-			model = updateModel(t, model, tea.WindowSizeMsg{Width: tt.width, Height: 32})
+			model := updateModel(t, tt.model(), tea.WindowSizeMsg{Width: tt.width, Height: 32})
 			raw := model.View().Content
 			stripped := ansi.Strip(raw)
 			for _, required := range tt.required {
@@ -282,31 +301,166 @@ func TestRenderRefreshAndHelpStates(t *testing.T) {
 					t.Errorf("render missing %q", required)
 				}
 			}
-			lines := strings.Split(strings.TrimSuffix(stripped, "\n"), "\n")
-			if len(lines) != 32 {
-				t.Errorf("render height = %d rows, want 32", len(lines))
-			}
-			for index, line := range lines {
-				if got := ansi.StringWidth(line); got != tt.width {
-					t.Errorf("line %d width = %d, want %d", index+1, got, tt.width)
-				}
-			}
-
-			normalized := normalizeRender(raw)
-			goldenPath := filepath.Join("testdata", tt.goldenFile)
-			if os.Getenv("UPDATE_GOLDEN") == "1" {
-				if err := os.WriteFile(goldenPath, []byte(normalized), 0o644); err != nil {
-					t.Fatalf("write golden: %v", err)
-				}
-			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("read golden: %v", err)
-			}
-			if normalized != string(want) {
-				t.Fatalf("render differs from %s\n--- got ---\n%s\n--- want ---\n%s", tt.goldenFile, normalized, want)
-			}
+			assertFitsTerminal(t, model, tt.name)
+			assertGolden(t, tt.goldenFile, raw)
 		})
+	}
+}
+
+func TestRenderSelectionTrayShowsCountPullRequestsAndHints(t *testing.T) {
+	model := renderTestModel()
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 32})
+	if strings.Contains(ansi.Strip(model.View().Content), "esc clear") {
+		t.Fatal("tray is visible with nothing selected")
+	}
+
+	model.checked["PR_api_184"] = true
+	model.checked["PR_api_201"] = true
+	lines := renderedLines(t, model)
+	tray := lines[len(lines)-2]
+	want := "2 selected  api#201 api#184"
+	if !strings.Contains(tray, want) {
+		t.Fatalf("tray = %q, want checked pull requests in group order after %q", tray, want)
+	}
+	if !strings.HasSuffix(strings.TrimRight(tray, " "), "c copy  esc clear") {
+		t.Fatalf("tray = %q, want hints right-aligned", tray)
+	}
+	assertFitsTerminal(t, model, "tray")
+}
+
+func TestRenderSelectionTrayTruncatesPullRequestsAtNarrowWidth(t *testing.T) {
+	var pullRequests []app.PullRequest
+	for number := 100; number < 120; number++ {
+		pullRequests = append(pullRequests, testPullRequest(fmt.Sprintf("PR_%d", number), "acme/api", number))
+	}
+	model := groupedTestModel(pullRequests...)
+	model.selectAll()
+	for _, width := range []int{40, 60, 80} {
+		model = updateModel(t, model, tea.WindowSizeMsg{Width: width, Height: 24})
+		lines := renderedLines(t, model)
+		tray := lines[len(lines)-2]
+		if !strings.Contains(tray, "20 selected") || !strings.Contains(tray, "…") {
+			t.Errorf("width %d: tray = %q, want the count and a truncated pull request list", width, tray)
+		}
+		if !strings.Contains(tray, "esc clear") {
+			t.Errorf("width %d: tray = %q lost its hints", width, tray)
+		}
+		assertFitsTerminal(t, model, fmt.Sprintf("tray width %d", width))
+	}
+}
+
+func TestRenderTrayShrinksBodyByOneRow(t *testing.T) {
+	model := updateModel(t, renderTestModel(), tea.WindowSizeMsg{Width: 120, Height: 32})
+	without := model.bodyHeight()
+	model.checked["PR_api_184"] = true
+	if with := model.bodyHeight(); with != without-1 {
+		t.Fatalf("body height with tray = %d, want %d", with, without-1)
+	}
+}
+
+func TestRenderDetailPaneShowsReviewChecksBranchAgeAndWrappedDescription(t *testing.T) {
+	model := renderTestModel()
+	model = selectPullRequest(t, model, "PR_api_184")
+	lines := model.renderDetailPane(40, 24)
+	stripped := ansi.Strip(strings.Join(lines, "\n"))
+
+	for _, want := range []string{
+		"acme/api #184",
+		"Fix session refresh",
+		"review    ✓ approved",
+		"checks    ✓ passing",
+		"branch    ken/session-refresh",
+		"age       opened 10d · updated 1d",
+		strings.Repeat("─", 40),
+		"DESCRIPTION",
+		"Refreshes expired sessions without",
+		"forcing a new login, dropping cookies,",
+		"## Notes",
+		"Preserves Markdown source.",
+	} {
+		if !strings.Contains(stripped, want) {
+			t.Errorf("detail missing %q:\n%s", want, stripped)
+		}
+	}
+	for _, line := range lines {
+		if ansi.StringWidth(line) != 40 {
+			t.Errorf("detail line width = %d: %q", ansi.StringWidth(line), ansi.Strip(line))
+		}
+	}
+}
+
+func TestRenderDetailPaneWrapsLongTitlesAndStatesWithoutBranchOrBody(t *testing.T) {
+	model := renderTestModel()
+	model = selectPullRequest(t, model, "PR_web_85")
+	stripped := ansi.Strip(strings.Join(model.renderDetailPane(30, 20), "\n"))
+	if strings.Contains(stripped, "branch") {
+		t.Errorf("detail shows a branch row for an empty branch:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "No description") {
+		t.Errorf("detail missing empty description text:\n%s", stripped)
+	}
+
+	model = selectPullRequest(t, model, "PR_api_201")
+	stripped = normalizeRender(strings.Join(model.renderDetailPane(30, 20), "\n"))
+	if !strings.Contains(stripped, "Rotate signing keys without\n") || !strings.Contains(stripped, "✗ failing") {
+		t.Errorf("detail did not wrap the title or show failing checks:\n%s", stripped)
+	}
+}
+
+func TestRenderDetailPaneClipsDescriptionToHeight(t *testing.T) {
+	model := renderTestModel()
+	model = selectPullRequest(t, model, "PR_api_201")
+	lines := model.renderDetailPane(40, 14)
+	if len(lines) != 14 {
+		t.Fatalf("detail rows = %d, want 14", len(lines))
+	}
+	if strings.Contains(ansi.Strip(strings.Join(lines, "\n")), "new keys are published first") {
+		t.Fatal("description is not clipped to the pane height")
+	}
+}
+
+func TestRenderDetailPaneFillsTheBodyHeight(t *testing.T) {
+	model := updateModel(t, renderTestModel(), tea.WindowSizeMsg{Width: 120, Height: 60})
+	layout := layoutBody(model.contentWidth(), model.bodyHeight())
+	if layout.detailHeight != layout.listHeight || layout.detailHeight < 50 {
+		t.Fatalf("detail height = %d, list height = %d, want both to fill the body", layout.detailHeight, layout.listHeight)
+	}
+}
+
+func TestRenderListScrollsToKeepCursorVisible(t *testing.T) {
+	var pullRequests []app.PullRequest
+	for number := 1; number <= 30; number++ {
+		pullRequests = append(pullRequests, testPullRequest(fmt.Sprintf("PR_%02d", number), "acme/api", number))
+	}
+	model := groupedTestModel(pullRequests...)
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 120, Height: 16})
+
+	for range 20 {
+		model = press(t, model, keyDown)
+	}
+	rendered := ansi.Strip(model.View().Content)
+	if !strings.Contains(rendered, "api#21 ") {
+		t.Fatalf("cursor row api#21 is not visible:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "api#1 ") {
+		t.Fatalf("list did not scroll:\n%s", rendered)
+	}
+
+	for range 19 {
+		model = press(t, model, keyUp)
+	}
+	model = press(t, model, keyUp)
+	rendered = ansi.Strip(model.View().Content)
+	if !strings.Contains(rendered, "WAITING ON REVIEW") || !strings.Contains(rendered, "api#1 ") {
+		t.Fatalf("scrolling back up lost the group header or cursor row:\n%s", rendered)
+	}
+}
+
+func TestRenderCursorRowHasPurpleBackground(t *testing.T) {
+	model := updateModel(t, renderTestModel(), tea.WindowSizeMsg{Width: 120, Height: 32})
+	raw := model.View().Content
+	if !strings.Contains(raw, "48;2;164;139;255") {
+		t.Fatal("cursor row has no #A48BFF background")
 	}
 }
 
@@ -317,6 +471,7 @@ func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *tes
 		Number:     9,
 		Title:      "Fix \x1b]8;;https://evil.example\x1b\\linked\x1b]8;;\x1b\\ title\rback\bspace\u0085c1",
 		Body:       "First \x1b]52;c;c2VjcmV0\x07line\r\nSecond\b line\u0085end",
+		Branch:     "feature/\x1b[2Jbranch",
 		URL:        "https://github.com/acme/api/pull/9\x1b[2J",
 		CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
 		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
@@ -324,53 +479,38 @@ func TestRenderSanitizesUntrustedPullRequestTextWithoutMutatingDomainData(t *tes
 		Checks:     app.CheckState("passing\x1b]52;c;c3RhdHVz\x07\bnow"),
 	}
 	original := pullRequest
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		snapshotPointer(testSnapshot(pullRequest)),
-		nil,
-		testDependencies(),
-	)
+	model := groupedTestModel(pullRequest)
+	model.checked[pullRequest.ID] = true
 	model = updateModel(t, model, tea.WindowSizeMsg{Width: 180, Height: 32})
 
 	raw := model.View().Content
 	stripped := ansi.Strip(raw)
 	for _, want := range []string{
+		"api#9",
 		"acme/api #9",
 		"Fix linked title�back�space�c1",
-		"https://github.com/acme/api/pull/9",
-		"Review   approved�now",
-		"Checks   passing�now",
+		"approved�now",
+		"passing�now",
+		"feature/branch",
+		"First line",
+		"Second� line�end",
 	} {
 		if !strings.Contains(stripped, want) {
 			t.Errorf("sanitized render missing %q:\n%s", want, stripped)
 		}
 	}
-	for _, forbidden := range []string{
-		"https://evil.example",
-		"c2VjcmV0",
-		"\x1b[31m",
-		"\x1b[2J",
-		"\r",
-		"\b",
-		"\u0085",
-	} {
+	for _, forbidden := range []string{"https://evil.example", "c2VjcmV0", "c3RhdHVz", "\x1b[31m", "\x1b[2J", "\r", "\b", "\u0085"} {
 		if strings.Contains(stripped, forbidden) {
 			t.Errorf("sanitized render contains %q:\n%s", forbidden, stripped)
 		}
 	}
-	for _, forbidden := range []string{
-		"\x1b[2J",
-		"\x1b]8;",
-		"\x1b]52;",
-	} {
+	for _, forbidden := range []string{"\x1b[2J", "\x1b]8;", "\x1b]52;"} {
 		if strings.Contains(raw, forbidden) {
 			t.Errorf("raw render contains untrusted terminal sequence %q", forbidden)
 		}
 	}
-
-	if !reflect.DeepEqual(model.pullRequests[0], original) {
-		t.Fatalf("render mutated domain pull request = %#v, want %#v", model.pullRequests[0], original)
+	if got := model.pullRequests[0]; got != original {
+		t.Fatalf("render mutated domain pull request = %#v, want %#v", got, original)
 	}
 }
 
@@ -416,105 +556,35 @@ func TestRenderSanitizesUntrustedErrorsAndStatusText(t *testing.T) {
 	})
 }
 
-func renderTestModel() Model {
+func TestRenderFooterKeepsStatusVisibleAtNarrowWidth(t *testing.T) {
+	model := renderTestModel()
+	model.status = statusLine{text: "Copied pull request URL.", kind: statusSuccess}
+	model = updateModel(t, model, tea.WindowSizeMsg{Width: 60, Height: 24})
+	lines := renderedLines(t, model)
+	footer := lines[len(lines)-1]
+	if !strings.Contains(footer, "✓ Copied pull request URL.") || !strings.Contains(footer, "? more") {
+		t.Fatalf("footer = %q, want the status and the help key both kept", footer)
+	}
+}
+
+func TestCompactAge(t *testing.T) {
 	now := time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC)
-	first := app.PullRequest{
-		ID:         "PR_api_184",
-		Repository: "acme/api",
-		Number:     184,
-		Title:      "Fix session refresh",
-		Body:       "Refreshes expired sessions without forcing a new login, dropping cookies, or losing unsaved work.\n\n## Notes\nPreserves Markdown source.",
-		URL:        "https://github.com/acme/api/pull/184",
-		CreatedAt:  time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
-		UpdatedAt:  time.Date(2026, 7, 29, 12, 0, 0, 0, time.UTC),
-		Review:     app.ReviewApproved,
-		Checks:     app.ChecksPassing,
+	tests := map[string]struct {
+		then time.Time
+		want string
+	}{
+		"seconds":      {now.Add(-30 * time.Second), "now"},
+		"minutes":      {now.Add(-11 * time.Minute), "11m"},
+		"hours":        {now.Add(-2 * time.Hour), "2h"},
+		"days":         {now.Add(-49 * time.Hour), "2d"},
+		"future":       {now.Add(time.Hour), "now"},
+		"zero instant": {time.Time{}, "now"},
 	}
-	second := app.PullRequest{
-		ID:         "PR_web_92",
-		Repository: "acme/web",
-		Number:     92,
-		Title:      "Add invoice filters",
-		Body:       "",
-		URL:        "https://github.com/acme/web/pull/92",
-		Draft:      true,
-		CreatedAt:  time.Date(2026, 7, 25, 12, 0, 0, 0, time.UTC),
-		UpdatedAt:  time.Date(2026, 7, 30, 14, 0, 0, 0, time.UTC),
-		Review:     app.ReviewChangesRequested,
-		Checks:     app.ChecksFailing,
-	}
-	cached := app.Snapshot{
-		PullRequests: []app.PullRequest{first, second},
-		FetchedAt:    now.Add(-time.Hour),
-	}
-	deps := testDependencies()
-	deps.Now = func() time.Time { return now }
-	return NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}},
-		&cached,
-		nil,
-		deps,
-	)
-}
-
-var relativeAgePattern = regexp.MustCompile(`\b(?:now|\d+[mhd] ago)\b`)
-
-func normalizeRender(render string) string {
-	render = ansi.Strip(render)
-	render = relativeAgePattern.ReplaceAllString(render, "<age>")
-	lines := strings.Split(render, "\n")
-	for index := range lines {
-		lines[index] = strings.TrimRight(lines[index], " ")
-	}
-	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
-}
-
-func lineContaining(render, needle string) int {
-	for index, line := range strings.Split(render, "\n") {
-		if strings.Contains(line, needle) {
-			return index
-		}
-	}
-	return -1
-}
-
-func TestRenderCheckedPRsAndCompactStatusWithoutDescription(t *testing.T) {
-	for _, width := range []int{60, 80, 100, 120, 180} {
-		for _, height := range []int{20, 32} {
-			for _, help := range []bool{false, true} {
-				model := renderTestModel()
-				model.checked[model.pullRequests[1].ID] = true
-				model.showHelp = help
-				model.resize(width, height)
-				rendered := ansi.Strip(model.View().Content)
-				for _, forbidden := range []string{"Refreshes expired", "## Notes", "copy preview", "Tab focus"} {
-					if strings.Contains(rendered, forbidden) {
-						t.Fatalf("render contains %q", forbidden)
-					}
-				}
-				for _, required := range []string{"1 selected", "› [ ] Fix session refresh", "[x] Add invoice filters", "c copy 1 selected"} {
-					if !strings.Contains(rendered, required) {
-						t.Errorf("%dx%d help=%v missing %q: %s", width, height, help, required, rendered)
-					}
-				}
-				lines := strings.Split(rendered, "\n")
-				if len(lines) != height {
-					t.Errorf("%dx%d help=%v rendered %d lines", width, height, help, len(lines))
-				}
-				for _, line := range lines {
-					if ansi.StringWidth(line) != width {
-						t.Errorf("%dx%d line width = %d", width, height, ansi.StringWidth(line))
-					}
-				}
-				listWidth, detailWidth, _, detailHeight := paneDimensions(width, height, model.chromeRows())
-				if width >= wideLayoutMin && listWidth <= detailWidth {
-					t.Fatal("wide list is not wider than detail")
-				}
-				if detailHeight > 12 {
-					t.Fatalf("detail card is %d lines tall", detailHeight)
-				}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			if got := compactAge(now, tt.then); got != tt.want {
+				t.Fatalf("compactAge() = %q, want %q", got, tt.want)
 			}
-		}
+		})
 	}
 }

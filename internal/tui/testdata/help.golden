@@ -1,32 +1,32 @@
-PRQ • 2 pull requests • refreshing • last updated <age>
-╭─────────────────────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────╮
-│ PULL REQUESTS · 0 selected                                          │ │ DETAIL                                       │
-│ › [ ] Fix session refresh                                           │ │ Fix session refresh                          │
-│       acme/api #184 · approved · Checks passing                     │ │ acme/api #184  •  OPEN                       │
-│                                                                     │ │                                              │
-│   [ ] Add invoice filters                                           │ │ Review   approved                            │
-│       acme/web #92  DRAFT · changes requested · Checks failing      │ │ Checks   passing                             │
-│                                                                     │ │                                              │
-│                                                                     │ │ Created  <age>                             │
-│                                                                     │ │ Updated  <age>                              │
-│                                                                     │ │ https://github.com/acme/api/pull/184         │
-│                                                                     │ ╰──────────────────────────────────────────────╯
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-╰─────────────────────────────────────────────────────────────────────╯
+ prq  ● 1 ready  ○ 2 review  ✗ 2 blocked  ◇ 1 draft                                                       synced 8m ago
 
-↑/↓ move Space toggle checkbox a select all Esc clear selection o open c copy URL C copy all as Slack r refresh
-? compact help q quit
+ ✗ BLOCKED 2                                                          │  acme/api #201
+ □ api#201  Rotate signing keys without invalidating live …   checks  │  Rotate signing keys without invalidating live
+ □ web#77   Migrate billing webhooks                         changes  │  sessions or the refresh token cache
+                                                                      │
+ ● READY TO MERGE 1                                                   │  review    ○ required
+ □ api#184  Fix session refresh                                  10d  │  checks    ✗ failing
+                                                                      │  branch    ken/rotate-keys
+ ○ WAITING ON REVIEW 2                                                │  age       opened 3h · updated 20m
+ □ api#190  Cache session lookups                               ◌ ci  │
+ □ web#85   Trim bundle size                                      1d  │  ──────────────────────────────────────────────
+                                                                      │
+ ▸ ◇ DRAFT 1                                                          │  DESCRIPTION
+                                                                      │  Rotates keys on a schedule.
+                                                                      │
+                                                                      │  - old keys stay valid for 24h
+                                                                      │  - new keys are published first
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+ ↑↓ move  tab next group  enter expand  space select  a select all  esc clear  c copy url  C copy all as Slack  o open
+ r refresh  ? less  q quit
