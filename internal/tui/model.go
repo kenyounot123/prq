@@ -10,10 +10,13 @@ import (
 )
 
 const (
-	wideLayoutMin = 100
-	pageMargin    = 1
-	// headerRows is the summary line plus the blank line under it.
-	headerRows = 2
+	wideLayoutMin   = 100
+	pageMargin      = 1
+	summaryRows     = 1
+	spacerRows      = 1
+	headerRows      = summaryRows + spacerRows
+	wideListPercent = 60
+	stackedRuleRows = 1
 )
 
 type statusKind int
@@ -120,8 +123,6 @@ func (m Model) bodyHeight() int {
 	return max(0, m.height-m.chromeRows())
 }
 
-// bodyLayout sizes the list and detail panes. Wide terminals put them side by
-// side. Narrow terminals stack them with a one row rule between.
 type bodyLayout struct {
 	wide                     bool
 	listWidth, detailWidth   int
@@ -131,7 +132,7 @@ type bodyLayout struct {
 func layoutBody(width, height int) bodyLayout {
 	if width >= wideLayoutMin {
 		available := max(0, width-columnSeparatorWidth)
-		listWidth := available * 60 / 100
+		listWidth := available * wideListPercent / 100
 		return bodyLayout{
 			wide:         true,
 			listWidth:    listWidth,
@@ -140,7 +141,7 @@ func layoutBody(width, height int) bodyLayout {
 			detailHeight: height,
 		}
 	}
-	stacked := max(0, height-1)
+	stacked := max(0, height-stackedRuleRows)
 	detailHeight := stacked / 2
 	return bodyLayout{
 		listWidth:    width,

@@ -12,7 +12,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-const columnSeparatorWidth = 5 // "  │  "
+const (
+	columnGap  = "  "
+	columnRule = "│"
+)
+
+var columnSeparatorWidth = ansi.StringWidth(columnGap + columnRule + columnGap)
 
 func fg(c color.Color) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(c)
@@ -37,7 +42,7 @@ func (m Model) render() string {
 
 	lines := []string{m.renderHeader(width), strings.Repeat(" ", width)}
 	if layout.wide {
-		separator := "  " + fg(ruleColor).Render("│") + "  "
+		separator := columnGap + fg(ruleColor).Render(columnRule) + columnGap
 		for index := range list {
 			lines = append(lines, list[index]+separator+detail[index])
 		}
@@ -98,7 +103,6 @@ func (m Model) syncText() string {
 	return synced
 }
 
-// justify puts right at the right edge and truncates left to make room.
 func justify(left, right string, width int) string {
 	if width <= 0 {
 		return ""
@@ -183,13 +187,12 @@ func (m Model) footerLines() []string {
 			{"space", "select"},
 			m.copyBinding(),
 			{"o", "open"},
-			{"?", "more"},
 		}
 		room := width
 		if statusText != "" {
 			room = max(0, width-ansi.StringWidth(statusText)-2)
 		}
-		return []string{justifyStatus(renderBindings(fitBindings(bindings, room)), statusText, width)}
+		return []string{justifyStatus(renderBindings(fitBindings(bindings, binding{"?", "more"}, room)), statusText, width)}
 	}
 
 	lines := wrapBindings([]binding{
@@ -215,8 +218,6 @@ func (m Model) footerLines() []string {
 	return lines
 }
 
-// justifyStatus right-aligns the status. When both do not fit, the status keeps
-// at least half the line so a failure is never hidden behind the hints.
 func justifyStatus(left, status string, width int) string {
 	if width <= 0 {
 		return ""
@@ -227,7 +228,8 @@ func justifyStatus(left, status string, width int) string {
 	statusWidth := ansi.StringWidth(status)
 	leftWidth := ansi.StringWidth(left)
 	if leftWidth+2+statusWidth > width {
-		status = ansi.Truncate(status, min(statusWidth, max(width/2, width-leftWidth-2)), "…")
+		minStatusWidth := width / 2
+		status = ansi.Truncate(status, min(statusWidth, max(minStatusWidth, width-leftWidth-2)), "…")
 		statusWidth = ansi.StringWidth(status)
 		left = ansi.Truncate(left, max(0, width-statusWidth-2), "…")
 	}
@@ -235,9 +237,7 @@ func justifyStatus(left, status string, width int) string {
 	return left + strings.Repeat(" ", gap) + status
 }
 
-// fitBindings drops bindings to fit width. The last binding, which opens the
-// help, is the last to go.
-func fitBindings(bindings []binding, width int) []binding {
+func fitBindings(bindings []binding, pinned binding, width int) []binding {
 	total := func(list []binding) int {
 		sum := 2 * max(0, len(list)-1)
 		for _, b := range list {
@@ -246,10 +246,10 @@ func fitBindings(bindings []binding, width int) []binding {
 		return sum
 	}
 	fitted := slices.Clone(bindings)
-	for len(fitted) > 1 && total(fitted) > width {
-		fitted = slices.Delete(fitted, len(fitted)-2, len(fitted)-1)
+	for len(fitted) > 0 && total(append(fitted, pinned)) > width {
+		fitted = fitted[:len(fitted)-1]
 	}
-	return fitted
+	return append(fitted, pinned)
 }
 
 func renderBindings(bindings []binding) string {
@@ -296,8 +296,6 @@ func (s statusLine) render() string {
 	}
 }
 
-// currentStatus picks what the footer reports. An action result wins over the
-// standing refresh error and cache warning.
 func (m Model) currentStatus() (statusLine, bool) {
 	switch {
 	case m.status.text != "":
@@ -348,7 +346,6 @@ func oneLine(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-// compactAge renders an elapsed time as now, 5m, 3h or 2d.
 func compactAge(now, then time.Time) string {
 	if now.IsZero() || then.IsZero() || !now.After(then) {
 		return "now"

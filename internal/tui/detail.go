@@ -112,7 +112,6 @@ func (m Model) detailLines(pullRequest app.PullRequest, width int) []string {
 	return lines
 }
 
-// wrapText wraps each source line to width and keeps blank lines.
 func wrapText(text string, width int) []string {
 	if width <= 0 {
 		return nil

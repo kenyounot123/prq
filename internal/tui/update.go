@@ -151,8 +151,6 @@ func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 
 var noPullRequestSelected = statusLine{text: "No pull request selected.", kind: statusWarning}
 
-// toggleGroupAtCursor expands a collapsed group from its header, or collapses
-// the group of the highlighted pull request and rests on its header.
 func (m Model) toggleGroupAtCursor() Model {
 	rows := m.rows()
 	if m.selected < 0 || m.selected >= len(rows) {
@@ -186,7 +184,7 @@ func (m Model) selectedPullRequest() (app.PullRequest, bool) {
 	if m.selected < 0 || m.selected >= len(rows) || rows[m.selected].isHeader() {
 		return app.PullRequest{}, false
 	}
-	return m.pullRequests[rows[m.selected].pullRequest], true
+	return m.pullRequests[rows[m.selected].pullRequestIndex], true
 }
 
 func (m Model) refreshCmd() tea.Cmd {

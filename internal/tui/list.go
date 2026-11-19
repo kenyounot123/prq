@@ -17,8 +17,6 @@ const (
 
 const blankLine = -1
 
-// listLines maps every visual line of the list to its row, with blankLine for
-// the spacer before each group but the first.
 func (m Model) listLines(rows []listRow) []int {
 	lines := make([]int, 0, len(rows)+len(groupPresentations))
 	for index, row := range rows {
@@ -34,9 +32,6 @@ func (m Model) listHeight() int {
 	return layoutBody(m.contentWidth(), m.bodyHeight()).listHeight
 }
 
-// scrolledTop moves the stored scroll offset just far enough to keep the
-// cursor in view, along with its group header when the cursor is on the
-// group's first pull request.
 func (m Model) scrolledTop() int {
 	rows := m.rows()
 	lines := m.listLines(rows)
@@ -109,7 +104,7 @@ func (m Model) renderListRows(width, height int) []string {
 			lines = append(lines, m.renderGroupHeader(row.group, cursor, width))
 			continue
 		}
-		lines = append(lines, m.renderPullRequestRow(m.pullRequests[row.pullRequest], cursor, labelWidth, width))
+		lines = append(lines, m.renderPullRequestRow(m.pullRequests[row.pullRequestIndex], cursor, labelWidth, width))
 	}
 	return lines
 }
@@ -139,7 +134,6 @@ func cursorStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Bold(true).Foreground(onAccentColor).Background(accentColor)
 }
 
-// pullRequestLabel is repo#number without the owner.
 func pullRequestLabel(pullRequest app.PullRequest) string {
 	repository := sanitizeTerminalText(pullRequest.Repository, false)
 	if _, name, ok := strings.Cut(repository, "/"); ok {
@@ -154,13 +148,11 @@ func (m Model) labelColumnWidth(rows []listRow) int {
 		if row.isHeader() {
 			continue
 		}
-		longest = max(longest, ansi.StringWidth(pullRequestLabel(m.pullRequests[row.pullRequest])))
+		longest = max(longest, ansi.StringWidth(pullRequestLabel(m.pullRequests[row.pullRequestIndex])))
 	}
 	return min(longest, maxLabelWidth)
 }
 
-// rightColumnFor says why a pull request is blocked, that its checks are still
-// running, or how old it is.
 func (m Model) rightColumnFor(pullRequest app.PullRequest) (string, lipgloss.Style) {
 	blocked := app.StatusGroupOf(pullRequest) == app.StatusBlocked
 	switch {
@@ -203,7 +195,6 @@ func (m Model) renderPullRequestRow(pullRequest app.PullRequest, cursor bool, la
 	return padTo(ansi.Truncate(line, width, ""), width)
 }
 
-// fitLines pads or clips lines to exactly height rows of exactly width cells.
 func fitLines(lines []string, width, height int) []string {
 	fitted := make([]string, height)
 	for index := range fitted {

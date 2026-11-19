@@ -29,7 +29,6 @@ type groupPresentation struct {
 	color      color.Color
 }
 
-// groupPresentations is the only place that knows how a status group looks.
 var groupPresentations = [...]groupPresentation{
 	app.StatusBlocked: {glyph: "✗", label: "BLOCKED", shortLabel: "blocked", color: errorColor},
 	app.StatusReady:   {glyph: "●", label: "READY TO MERGE", shortLabel: "ready", color: greenColor},
@@ -37,8 +36,6 @@ var groupPresentations = [...]groupPresentation{
 	app.StatusDraft:   {glyph: "◇", label: "DRAFT", shortLabel: "draft", color: secondaryColor},
 }
 
-// summaryOrder is the order of the header counts, which leads with the groups
-// that need no action from you.
 var summaryOrder = [...]app.StatusGroup{
 	app.StatusReady, app.StatusWaiting, app.StatusBlocked, app.StatusDraft,
 }
@@ -49,17 +46,13 @@ func presentationOf(group app.StatusGroup) groupPresentation {
 
 const headerRow = -1
 
-// listRow is either a group header or a pull request. For pull request rows,
-// pullRequest indexes Model.pullRequests.
 type listRow struct {
-	group       app.StatusGroup
-	pullRequest int
+	group            app.StatusGroup
+	pullRequestIndex int
 }
 
-func (r listRow) isHeader() bool { return r.pullRequest == headerRow }
+func (r listRow) isHeader() bool { return r.pullRequestIndex == headerRow }
 
-// groupIndexes returns, per group, the indexes into m.pullRequests in the
-// order the service sorted them.
 func (m Model) groupIndexes() [][]int {
 	groups := make([][]int, len(groupPresentations))
 	for index, pullRequest := range m.pullRequests {
@@ -69,8 +62,6 @@ func (m Model) groupIndexes() [][]int {
 	return groups
 }
 
-// rows lists what is on screen: a header per non-empty group and the pull
-// requests of every expanded group.
 func (m Model) rows() []listRow {
 	groups := m.groupIndexes()
 	var rows []listRow
@@ -78,19 +69,17 @@ func (m Model) rows() []listRow {
 		if len(groups[group]) == 0 {
 			continue
 		}
-		rows = append(rows, listRow{group: group, pullRequest: headerRow})
+		rows = append(rows, listRow{group: group, pullRequestIndex: headerRow})
 		if m.collapsed[group] {
 			continue
 		}
 		for _, index := range groups[group] {
-			rows = append(rows, listRow{group: group, pullRequest: index})
+			rows = append(rows, listRow{group: group, pullRequestIndex: index})
 		}
 	}
 	return rows
 }
 
-// groupedPullRequests is the dashboard order: every pull request, collapsed
-// groups included, in group order.
 func (m Model) groupedPullRequests() []app.PullRequest {
 	groups := m.groupIndexes()
 	ordered := make([]app.PullRequest, 0, len(m.pullRequests))
@@ -102,9 +91,6 @@ func (m Model) groupedPullRequests() []app.PullRequest {
 	return ordered
 }
 
-// isNavigable reports whether the cursor may rest on a row. Headers of
-// expanded groups are skipped, but a collapsed header is the only way to reach
-// its group.
 func (m Model) isNavigable(row listRow) bool {
 	return !row.isHeader() || m.collapsed[row.group]
 }
@@ -127,8 +113,6 @@ func (m Model) stepCursor(rows []listRow, delta int) int {
 	return m.selected
 }
 
-// nextGroupCursor jumps to the first navigable row of the next group, wrapping
-// to the first group after the last.
 func (m Model) nextGroupCursor(rows []listRow) int {
 	if m.selected < 0 || m.selected >= len(rows) {
 		return m.firstNavigable(rows)
@@ -142,8 +126,6 @@ func (m Model) nextGroupCursor(rows []listRow) int {
 	return m.firstNavigable(rows)
 }
 
-// nearestNavigable settles an arbitrary index onto a navigable row, preferring
-// the rows above it.
 func (m Model) nearestNavigable(rows []listRow, index int) int {
 	if len(rows) == 0 {
 		return 0
@@ -162,8 +144,6 @@ func (m Model) nearestNavigable(rows []listRow, index int) int {
 	return 0
 }
 
-// cursorTarget remembers what the cursor rests on so it can follow that thing
-// to a new position after the rows change.
 type cursorTarget struct {
 	pullRequestID string
 	group         app.StatusGroup
@@ -180,11 +160,9 @@ func (m Model) cursorTarget() cursorTarget {
 	if row.isHeader() {
 		return cursorTarget{group: row.group, onHeader: true, valid: true}
 	}
-	return cursorTarget{pullRequestID: m.pullRequests[row.pullRequest].ID, valid: true}
+	return cursorTarget{pullRequestID: m.pullRequests[row.pullRequestIndex].ID, valid: true}
 }
 
-// locate finds the target's row. A pull request that moved into a collapsed
-// group is represented by that group's header.
 func (m Model) locate(rows []listRow, target cursorTarget) (int, bool) {
 	if !target.valid {
 		return 0, false
@@ -193,7 +171,7 @@ func (m Model) locate(rows []listRow, target cursorTarget) (int, bool) {
 		switch {
 		case target.onHeader && row.isHeader() && row.group == target.group:
 			return index, true
-		case !target.onHeader && !row.isHeader() && m.pullRequests[row.pullRequest].ID == target.pullRequestID:
+		case !target.onHeader && !row.isHeader() && m.pullRequests[row.pullRequestIndex].ID == target.pullRequestID:
 			return index, true
 		}
 	}
@@ -201,14 +179,17 @@ func (m Model) locate(rows []listRow, target cursorTarget) (int, bool) {
 		return 0, false
 	}
 	for _, pullRequest := range m.pullRequests {
-		if pullRequest.ID != target.pullRequestID {
-			continue
+		if pullRequest.ID == target.pullRequestID {
+			return headerRowOf(rows, app.StatusGroupOf(pullRequest))
 		}
-		group := app.StatusGroupOf(pullRequest)
-		for rowIndex, row := range rows {
-			if row.isHeader() && row.group == group {
-				return rowIndex, true
-			}
+	}
+	return 0, false
+}
+
+func headerRowOf(rows []listRow, group app.StatusGroup) (int, bool) {
+	for index, row := range rows {
+		if row.isHeader() && row.group == group {
+			return index, true
 		}
 	}
 	return 0, false

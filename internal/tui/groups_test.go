@@ -37,8 +37,6 @@ func draftPullRequest(id string, number int) app.PullRequest {
 	return pullRequest
 }
 
-// cursorAt names what the cursor rests on: a pull request ID, or the label of
-// a collapsed group header.
 func cursorAt(model Model) string {
 	rows := model.rows()
 	if model.selected < 0 || model.selected >= len(rows) {
@@ -48,7 +46,7 @@ func cursorAt(model Model) string {
 	if row.isHeader() {
 		return "header:" + presentationOf(row.group).shortLabel
 	}
-	return model.pullRequests[row.pullRequest].ID
+	return model.pullRequests[row.pullRequestIndex].ID
 }
 
 func press(t *testing.T, model Model, key tea.Key) Model {
@@ -76,7 +74,7 @@ func TestRowsListGroupsInDisplayOrderAndHideEmptyOnes(t *testing.T) {
 		if row.isHeader() {
 			got = append(got, "header:"+presentationOf(row.group).shortLabel)
 		} else {
-			got = append(got, model.pullRequests[row.pullRequest].ID)
+			got = append(got, model.pullRequests[row.pullRequestIndex].ID)
 		}
 	}
 	want := []string{

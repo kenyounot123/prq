@@ -18,12 +18,10 @@ func selectedID(model Model) string {
 	return pullRequest.ID
 }
 
-// selectPullRequest puts the cursor on a pull request through the row list, so
-// tests do not depend on where headers fall.
 func selectPullRequest(t *testing.T, model Model, id string) Model {
 	t.Helper()
 	for index, row := range model.rows() {
-		if !row.isHeader() && model.pullRequests[row.pullRequest].ID == id {
+		if !row.isHeader() && model.pullRequests[row.pullRequestIndex].ID == id {
 			model.selected = index
 			return model
 		}
@@ -64,8 +62,6 @@ func normalizeRender(render string) string {
 	return strings.TrimRight(strings.Join(lines, "\n"), "\n") + "\n"
 }
 
-// renderTestModel holds one pull request per interesting case: two blocked, one
-// ready, two waiting (one without a description) and a collapsed draft.
 func renderTestModel() Model {
 	now := time.Date(2026, 7, 30, 16, 0, 0, 0, time.UTC)
 	pullRequests := []app.PullRequest{
