@@ -57,6 +57,9 @@ func (m Model) render() string {
 		lines = append(lines, m.renderTray(width))
 	}
 	lines = append(lines, m.footerLines()...)
+	if m.height > 0 && len(lines) > m.height {
+		lines = lines[len(lines)-m.height:]
+	}
 
 	margin := strings.Repeat(" ", pageMargin)
 	for index, line := range lines {
