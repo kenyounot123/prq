@@ -110,8 +110,8 @@ func TestRenderWideAndNarrowLayouts(t *testing.T) {
 }
 
 func TestRenderFitsTerminalAtEverySize(t *testing.T) {
-	for _, width := range []int{12, 30, 60, 80, 99, 100, 120, 180} {
-		for _, height := range []int{6, 12, 20, 40} {
+	for _, width := range []int{12, 20, 30, 60, 80, 99, 100, 120, 180} {
+		for _, height := range []int{6, 8, 12, 20, 40} {
 			for _, help := range []bool{false, true} {
 				for _, checked := range []int{0, 1, 4} {
 					model := renderTestModel()
@@ -127,8 +127,8 @@ func TestRenderFitsTerminalAtEverySize(t *testing.T) {
 							t.Fatalf("%dx%d help=%v checked=%d: line %d width = %d: %q", width, height, help, checked, index+1, got, line)
 						}
 					}
-					if got := strings.Count(rendered, "\n") + 1; got < height {
-						t.Fatalf("%dx%d help=%v checked=%d: rendered %d rows, want at least %d", width, height, help, checked, got, height)
+					if got := strings.Count(rendered, "\n") + 1; got != height {
+						t.Fatalf("%dx%d help=%v checked=%d: rendered %d rows, want %d", width, height, help, checked, got, height)
 					}
 				}
 			}
