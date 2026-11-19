@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"debug/buildinfo"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime/debug"
 	"strings"
 	"testing"
 	"time"
@@ -877,12 +879,17 @@ func TestBuiltExecutableSupportsHelpAndVersion(t *testing.T) {
 		t.Fatalf("build prq executable: %v\n%s", err, output)
 	}
 
+	info, err := buildinfo.ReadFile(binary)
+	if err != nil {
+		t.Fatalf("read build info: %v", err)
+	}
+
 	tests := []struct {
 		arg  string
 		want string
 	}{
 		{arg: "--help", want: "Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n"},
-		{arg: "--version", want: "prq dev\n"},
+		{arg: "--version", want: "prq " + versionOf(info) + "\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.arg, func(t *testing.T) {
@@ -997,5 +1004,35 @@ func testSelection() app.Selection {
 func testSnapshot() app.Snapshot {
 	return app.Snapshot{
 		FetchedAt: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+	}
+}
+
+func TestVersionOfUsesTheVersionGoRecordedInTheBinary(t *testing.T) {
+	tests := []struct {
+		name string
+		info *debug.BuildInfo
+		want string
+	}{
+		{name: "no build info", info: nil, want: "dev"},
+		{name: "untracked build", info: &debug.BuildInfo{Main: debug.Module{Version: "(devel)"}}, want: "dev"},
+		{name: "empty version", info: &debug.BuildInfo{}, want: "dev"},
+		{name: "tagged install", info: &debug.BuildInfo{Main: debug.Module{Version: "v1.2.0"}}, want: "v1.2.0"},
+		{
+			name: "untagged commit",
+			info: &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-20261119150855-3a3e8b2c2c04"}},
+			want: "v0.0.0-20261119150855-3a3e8b2c2c04",
+		},
+		{
+			name: "checkout with local edits",
+			info: &debug.BuildInfo{Main: debug.Module{Version: "v0.0.0-20261119150855-3a3e8b2c2c04+dirty"}},
+			want: "v0.0.0-20261119150855-3a3e8b2c2c04+dirty",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := versionOf(tt.info); got != tt.want {
+				t.Fatalf("versionOf() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
