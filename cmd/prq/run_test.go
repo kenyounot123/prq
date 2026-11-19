@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"debug/buildinfo"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -879,12 +879,17 @@ func TestBuiltExecutableSupportsHelpAndVersion(t *testing.T) {
 		t.Fatalf("build prq executable: %v\n%s", err, output)
 	}
 
+	info, err := buildinfo.ReadFile(binary)
+	if err != nil {
+		t.Fatalf("read build info: %v", err)
+	}
+
 	tests := []struct {
 		arg  string
-		want *regexp.Regexp
+		want string
 	}{
-		{arg: "--help", want: regexp.MustCompile(`^` + regexp.QuoteMeta("Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n") + `$`)},
-		{arg: "--version", want: regexp.MustCompile(`^prq v\d+\.\d+\.\d+\S*\n$`)},
+		{arg: "--help", want: "Usage:\n  prq\n  prq setup\n  prq export [--org ORG] [--account LOGIN]\n  prq --help\n  prq --version\n"},
+		{arg: "--version", want: "prq " + versionOf(info) + "\n"},
 	}
 	for _, test := range tests {
 		t.Run(test.arg, func(t *testing.T) {
@@ -893,8 +898,8 @@ func TestBuiltExecutableSupportsHelpAndVersion(t *testing.T) {
 			if err != nil {
 				t.Fatalf("%s error = %v; output = %q", test.arg, err, output)
 			}
-			if !test.want.Match(output) {
-				t.Fatalf("%s output = %q, want match for %s", test.arg, output, test.want)
+			if string(output) != test.want {
+				t.Fatalf("%s output = %q, want %q", test.arg, output, test.want)
 			}
 		})
 	}
