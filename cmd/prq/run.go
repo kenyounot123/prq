@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/debug"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -28,7 +29,6 @@ const usage = `Usage:
 `
 
 var (
-	version                 = "dev"
 	errGitHubCLINotFound    = errors.New("GitHub CLI not found")
 	errGitHubAuthentication = errors.New("GitHub authentication required; run: gh auth login")
 )
@@ -214,7 +214,7 @@ func runWithDeps(
 		fmt.Fprint(stdout, usage)
 		return 0
 	case commandVersion:
-		fmt.Fprintf(stdout, "prq %s\n", version)
+		fmt.Fprintf(stdout, "prq %s\n", buildVersion())
 		return 0
 	case commandSetup:
 		selection, err := deps.runSetup(ctx)
@@ -329,4 +329,16 @@ func (e presentedError) Error() string {
 
 func (e presentedError) Unwrap() []error {
 	return []error{e.presentation, e.cause}
+}
+
+func buildVersion() string {
+	info, _ := debug.ReadBuildInfo()
+	return versionOf(info)
+}
+
+func versionOf(info *debug.BuildInfo) string {
+	if info == nil || info.Main.Version == "" || info.Main.Version == "(devel)" {
+		return "dev"
+	}
+	return info.Main.Version
 }
