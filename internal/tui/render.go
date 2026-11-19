@@ -2,31 +2,25 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
+	"slices"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/kenyounot123/prq/internal/app"
 )
 
-var (
-	accentColor = lipgloss.Color("#7D56F4")
-	mutedColor  = lipgloss.Color("#6C7086")
-	errorColor  = lipgloss.Color("#F38BA8")
+const columnSeparatorWidth = 5 // "  │  "
 
-	headerStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(accentColor)
-	mutedStyle = lipgloss.NewStyle().
-			Foreground(mutedColor)
-	selectedStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(accentColor)
-	errorStyle = lipgloss.NewStyle().
-			Foreground(errorColor)
-)
+func fg(c color.Color) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(c)
+}
+
+func bold(c color.Color) lipgloss.Style {
+	return lipgloss.NewStyle().Bold(true).Foreground(c)
+}
 
 func (m Model) View() tea.View {
 	view := tea.NewView(m.render())
@@ -36,248 +30,284 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) render() string {
-	listWidth, detailWidth, listHeight, detailHeight := paneDimensions(
-		m.width,
-		m.height,
-		m.chromeRows(),
-	)
-	listPane := m.renderListPane(listWidth, listHeight)
-	detailPane := m.renderDetailPane(detailWidth, detailHeight)
+	width := m.contentWidth()
+	layout := layoutBody(width, m.bodyHeight())
+	list := m.renderListPane(layout.listWidth, layout.listHeight)
+	detail := m.renderDetailPane(layout.detailWidth, layout.detailHeight)
 
-	var panes string
-	if m.width >= wideLayoutMin {
-		panes = lipgloss.JoinHorizontal(lipgloss.Top, listPane, " ", detailPane)
-	} else {
-		panes = lipgloss.JoinVertical(lipgloss.Left, listPane, detailPane)
-	}
-
-	return strings.Join([]string{
-		m.renderHeader(),
-		panes,
-		m.renderStatus(),
-		m.renderFooter(),
-	}, "\n")
-}
-
-func (m Model) renderHeader() string {
-	countLabel := "pull requests"
-	if len(m.pullRequests) == 1 {
-		countLabel = "pull request"
-	}
-	state := "ready"
-	switch {
-	case m.refreshing:
-		state = "refreshing"
-	case m.stale:
-		state = "stale"
-	case m.loading:
-		state = "loading"
-	case m.refreshErr != nil:
-		state = "error"
-	}
-	lastUpdated := "never"
-	if !m.fetchedAt.IsZero() {
-		lastUpdated = relativeAge(m.now(), m.fetchedAt)
-	}
-	header := fmt.Sprintf(
-		"PRQ  •  %d %s  •  %s  •  last updated %s",
-		len(m.pullRequests),
-		countLabel,
-		state,
-		lastUpdated,
-	)
-	return headerStyle.Width(max(0, m.width)).Render(truncateLine(header, m.width))
-}
-
-func (m Model) renderListPane(width, height int) string {
-	innerWidth := max(0, width-paneFrameWidth)
-	innerHeight := max(0, height-paneBorderHeight)
-	lines := []string{selectedStyle.Render(truncateLine(fmt.Sprintf("PULL REQUESTS · %d selected", len(m.checked)), innerWidth))}
-
-	switch {
-	case m.loading && len(m.pullRequests) == 0:
-		lines = append(lines, "", "Loading pull requests…")
-	case m.refreshErr != nil && !m.stale:
-		refreshError := sanitizeTerminalText(m.refreshErr.Error(), false)
-		lines = append(
-			lines,
-			"",
-			errorStyle.Render(truncateLine("Refresh failed: "+refreshError, innerWidth)),
-			"Press r to retry or q to quit.",
-		)
-	case len(m.pullRequests) == 0:
-		lines = append(lines, "", "No open pull requests.")
-	default:
-		const rowHeight = 3
-		visibleRows := max(1, innerHeight/rowHeight)
-		start := 0
-		if m.selected >= visibleRows {
-			start = m.selected - visibleRows + 1
+	lines := []string{m.renderHeader(width), strings.Repeat(" ", width)}
+	if layout.wide {
+		separator := "  " + fg(ruleColor).Render("│") + "  "
+		for index := range list {
+			lines = append(lines, list[index]+separator+detail[index])
 		}
-		end := min(len(m.pullRequests), start+visibleRows)
-		for index := start; index < end; index++ {
-			lines = append(lines, m.renderPullRequestRow(m.pullRequests[index], index == m.selected, innerWidth)...)
-		}
-	}
-
-	return renderPane(strings.Join(lines, "\n"), width, height, true)
-}
-
-func (m Model) renderPullRequestRow(pullRequest app.PullRequest, selected bool, width int) []string {
-	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
-	titleText := sanitizeTerminalText(pullRequest.Title, false)
-	marker := "  "
-	if selected {
-		marker = "› "
-	}
-	checkbox := "[ ] "
-	if m.checked[pullRequest.ID] {
-		checkbox = "[x] "
-	}
-	state := ""
-	if pullRequest.Draft {
-		state = "  DRAFT"
-	}
-	title := truncateDisplayLine(marker+checkbox+oneLine(titleText), width)
-	metadata := truncateDisplayLine(
-		fmt.Sprintf("      %s #%d%s · %s · Checks %s", repositoryText, pullRequest.Number, state,
-			sanitizeTerminalText(string(pullRequest.Review), false),
-			sanitizeTerminalText(string(pullRequest.Checks), false)),
-		width,
-	)
-	if selected {
-		title = selectedStyle.Render(title)
-	}
-	metadata = mutedStyle.Render(metadata)
-	return []string{title, metadata, ""}
-}
-
-func (m Model) renderDetailPane(width, height int) string {
-	innerWidth := max(0, width-paneFrameWidth)
-	lines := []string{selectedStyle.Render("DETAIL")}
-	if m.selected < 0 || m.selected >= len(m.pullRequests) {
-		lines = append(lines, "No pull request selected.")
 	} else {
-		lines = append(
-			lines,
-			renderPullRequestDetailSummary(m.pullRequests[m.selected], innerWidth, m.now())...,
-		)
+		lines = append(lines, list...)
+		if layout.listHeight+layout.detailHeight < m.bodyHeight() {
+			lines = append(lines, fg(ruleColor).Render(strings.Repeat("─", width)))
+		}
+		lines = append(lines, detail...)
 	}
-	return renderPane(strings.Join(lines, "\n"), width, height, false)
-}
-
-func renderPullRequestDetailSummary(pullRequest app.PullRequest, width int, now time.Time) []string {
-	repositoryText := sanitizeTerminalText(pullRequest.Repository, false)
-	titleText := sanitizeTerminalText(pullRequest.Title, false)
-	urlText := sanitizeTerminalText(pullRequest.URL, false)
-	reviewText := sanitizeTerminalText(string(pullRequest.Review), false)
-	checksText := sanitizeTerminalText(string(pullRequest.Checks), false)
-	state := "OPEN"
-	if pullRequest.Draft {
-		state = "DRAFT"
-	}
-
-	review := "Review   " + reviewText
-	if pullRequest.Review == app.ReviewRequired {
-		review = "Review   required"
-	}
-	if pullRequest.Review == app.ReviewChangesRequested {
-		review = errorStyle.Render(review)
-	}
-	checks := "Checks   " + checksText
-	if pullRequest.Checks == app.ChecksFailing {
-		checks = errorStyle.Render(checks)
-	}
-
-	return []string{
-		selectedStyle.Render(truncateLine(titleText, width)),
-		mutedStyle.Render(truncateDisplayLine(
-			fmt.Sprintf("%s #%d  •  %s", repositoryText, pullRequest.Number, state),
-			width,
-		)),
-		"",
-		truncateDisplayLine(review, width),
-		truncateDisplayLine(checks, width),
-		"",
-		mutedStyle.Render(truncateDisplayLine("Created  "+relativeAge(now, pullRequest.CreatedAt), width)),
-		mutedStyle.Render(truncateDisplayLine("Updated  "+relativeAge(now, pullRequest.UpdatedAt), width)),
-		mutedStyle.Render(truncateLine(urlText, width)),
-	}
-}
-
-func (m Model) renderStatus() string {
-	status := m.statusMessage
-	switch {
-	case status != "":
-	case m.refreshErr != nil && m.stale:
-		status = "Refresh failed: " + m.refreshErr.Error()
-	case m.cacheWarning != nil:
-		status = "Warning: " + m.cacheWarning.Error()
-	}
-	status = sanitizeTerminalText(status, false)
-	return lipgloss.NewStyle().
-		Foreground(mutedColor).
-		Width(max(0, m.width)).
-		Render(truncateLine(status, m.width))
-}
-
-func (m Model) renderFooter() string {
-	return mutedStyle.
-		Width(max(0, m.width)).
-		Render(ansi.Wordwrap(m.footerText(), m.width, ""))
-}
-
-func (m Model) footerText() string {
-	copyLabel := "c copy URL"
 	if len(m.checked) > 0 {
-		copyLabel = fmt.Sprintf("c copy %d selected", len(m.checked))
+		lines = append(lines, m.renderTray(width))
 	}
-	help := "↑/↓ move Space select a all Esc clear " + copyLabel + " o open r refresh ? help q quit"
-	if m.showHelp {
-		help = wrapBindings([]string{
-			"↑/↓ move",
-			"Space toggle checkbox",
-			"a select all",
-			"Esc clear selection",
-			"o open",
-			copyLabel,
-			"C copy all as Slack",
-			"r refresh",
-			"? compact help",
-			"q quit",
-		}, m.width)
+	lines = append(lines, m.footerLines()...)
+
+	margin := strings.Repeat(" ", pageMargin)
+	for index, line := range lines {
+		lines[index] = margin + line + margin
 	}
-	return help
+	return strings.Join(lines, "\n")
 }
 
-func wrapBindings(bindings []string, width int) string {
-	if width <= 0 {
-		return strings.Join(bindings, "  ")
+func (m Model) renderHeader(width int) string {
+	counts := m.groupIndexes()
+	left := bold(accentColor).Render("prq")
+	for _, group := range summaryOrder {
+		presentation := presentationOf(group)
+		left += "  " + fg(presentation.color).Render(
+			fmt.Sprintf("%s %d %s", presentation.glyph, len(counts[group]), presentation.shortLabel),
+		)
 	}
 
-	var wrapped strings.Builder
-	lineWidth := 0
-	for _, binding := range bindings {
-		bindingWidth := ansi.StringWidth(binding)
-		if lineWidth > 0 && lineWidth+1+bindingWidth > width {
-			wrapped.WriteByte('\n')
-			lineWidth = 0
-		}
-		if lineWidth > 0 {
-			wrapped.WriteByte(' ')
-			lineWidth++
-		}
-		wrapped.WriteString(binding)
-		lineWidth += bindingWidth
+	right := fg(mutedColor).Render(m.syncText())
+	if len(m.checked) > 0 {
+		right = bold(accentColor).Render(fmt.Sprintf("%d selected", len(m.checked))) + "  " + right
 	}
-	return wrapped.String()
+	return justify(left, right, width)
 }
 
-func footerLineCount(text string, width int) int {
-	if width <= 0 {
-		return 1
+func (m Model) syncText() string {
+	synced := "never synced"
+	if !m.fetchedAt.IsZero() {
+		age := compactAge(m.now(), m.fetchedAt)
+		if age == "now" {
+			synced = "synced now"
+		} else {
+			synced = "synced " + age + " ago"
+		}
 	}
-	return strings.Count(ansi.Wordwrap(text, width, ""), "\n") + 1
+	switch {
+	case m.refreshing && m.fetchedAt.IsZero():
+		return "syncing…"
+	case m.refreshing:
+		return "refreshing · " + synced
+	case m.stale:
+		return "stale · " + synced
+	}
+	return synced
+}
+
+// justify puts right at the right edge and truncates left to make room.
+func justify(left, right string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	rightWidth := ansi.StringWidth(right)
+	if rightWidth >= width {
+		return padTo(ansi.Truncate(right, width, "…"), width)
+	}
+	left = ansi.Truncate(left, max(0, width-rightWidth-2), "…")
+	gap := width - ansi.StringWidth(left) - rightWidth
+	return left + strings.Repeat(" ", gap) + right
+}
+
+func (m Model) renderTray(width int) string {
+	background := lipgloss.NewStyle().Background(accentColor)
+	strong := background.Bold(true).Foreground(onAccentColor)
+	dim := background.Foreground(trayDimColor)
+
+	inner := max(0, width-2)
+	count := strong.Render(fmt.Sprintf("%d selected", len(m.checked)))
+	hints := strong.Render("c") + dim.Render(" copy  ") + strong.Render("esc") + dim.Render(" clear")
+
+	var labels []string
+	for _, pullRequest := range m.groupedPullRequests() {
+		if m.checked[pullRequest.ID] {
+			labels = append(labels, pullRequestLabel(pullRequest))
+		}
+	}
+	room := inner - ansi.StringWidth(count) - ansi.StringWidth(hints) - 4
+	list := ""
+	if room > 0 {
+		list = dim.Render(ansi.Truncate(strings.Join(labels, " "), room, "…"))
+	}
+
+	content := count
+	if list != "" {
+		content += dim.Render("  ") + list
+	}
+	if gap := inner - ansi.StringWidth(content) - ansi.StringWidth(hints); gap >= 1 {
+		content += background.Render(strings.Repeat(" ", gap)) + hints
+	}
+	line := background.Render(" ") + content + background.Render(" ")
+	line = ansi.Truncate(line, width, "")
+	if pad := width - ansi.StringWidth(line); pad > 0 {
+		line += background.Render(strings.Repeat(" ", pad))
+	}
+	return line
+}
+
+type binding struct {
+	key  string
+	desc string
+}
+
+func (b binding) width() int {
+	return ansi.StringWidth(b.key) + 1 + ansi.StringWidth(b.desc)
+}
+
+func (b binding) render() string {
+	return bold(textColor).Render(b.key) + " " + fg(secondaryColor).Render(b.desc)
+}
+
+func (m Model) copyBinding() binding {
+	if len(m.checked) > 0 {
+		return binding{"c", fmt.Sprintf("copy %d", len(m.checked))}
+	}
+	return binding{"c", "copy url"}
+}
+
+func (m Model) footerLines() []string {
+	width := m.contentWidth()
+	status, hasStatus := m.currentStatus()
+	statusText := ""
+	if hasStatus {
+		statusText = status.render()
+	}
+
+	if !m.showHelp {
+		bindings := []binding{
+			{"↑↓", "move"},
+			{"tab", "next group"},
+			{"space", "select"},
+			m.copyBinding(),
+			{"o", "open"},
+			{"?", "more"},
+		}
+		room := width
+		if statusText != "" {
+			room = max(0, width-ansi.StringWidth(statusText)-2)
+		}
+		return []string{justifyStatus(renderBindings(fitBindings(bindings, room)), statusText, width)}
+	}
+
+	lines := wrapBindings([]binding{
+		{"↑↓", "move"},
+		{"tab", "next group"},
+		{"enter", "expand"},
+		{"space", "select"},
+		{"a", "select all"},
+		{"esc", "clear"},
+		m.copyBinding(),
+		{"C", "copy all as Slack"},
+		{"o", "open"},
+		{"r", "refresh"},
+		{"?", "less"},
+		{"q", "quit"},
+	}, width)
+	for index, line := range lines {
+		lines[index] = padTo(ansi.Truncate(line, width, "…"), width)
+	}
+	if hasStatus {
+		lines = append(lines, justifyStatus("", statusText, width))
+	}
+	return lines
+}
+
+// justifyStatus right-aligns the status. When both do not fit, the status keeps
+// at least half the line so a failure is never hidden behind the hints.
+func justifyStatus(left, status string, width int) string {
+	if width <= 0 {
+		return ""
+	}
+	if status == "" {
+		return padTo(ansi.Truncate(left, width, "…"), width)
+	}
+	statusWidth := ansi.StringWidth(status)
+	leftWidth := ansi.StringWidth(left)
+	if leftWidth+2+statusWidth > width {
+		status = ansi.Truncate(status, min(statusWidth, max(width/2, width-leftWidth-2)), "…")
+		statusWidth = ansi.StringWidth(status)
+		left = ansi.Truncate(left, max(0, width-statusWidth-2), "…")
+	}
+	gap := width - ansi.StringWidth(left) - statusWidth
+	return left + strings.Repeat(" ", gap) + status
+}
+
+// fitBindings drops bindings to fit width. The last binding, which opens the
+// help, is the last to go.
+func fitBindings(bindings []binding, width int) []binding {
+	total := func(list []binding) int {
+		sum := 2 * max(0, len(list)-1)
+		for _, b := range list {
+			sum += b.width()
+		}
+		return sum
+	}
+	fitted := slices.Clone(bindings)
+	for len(fitted) > 1 && total(fitted) > width {
+		fitted = slices.Delete(fitted, len(fitted)-2, len(fitted)-1)
+	}
+	return fitted
+}
+
+func renderBindings(bindings []binding) string {
+	rendered := make([]string, len(bindings))
+	for index, b := range bindings {
+		rendered[index] = b.render()
+	}
+	return strings.Join(rendered, "  ")
+}
+
+func wrapBindings(bindings []binding, width int) []string {
+	var lines []string
+	var current []binding
+	currentWidth := 0
+	flush := func() {
+		if len(current) > 0 {
+			lines = append(lines, renderBindings(current))
+		}
+		current, currentWidth = nil, 0
+	}
+	for _, b := range bindings {
+		if len(current) > 0 && currentWidth+2+b.width() > width {
+			flush()
+		}
+		if len(current) > 0 {
+			currentWidth += 2
+		}
+		current = append(current, b)
+		currentWidth += b.width()
+	}
+	flush()
+	return lines
+}
+
+func (s statusLine) render() string {
+	text := sanitizeTerminalText(s.text, false)
+	switch s.kind {
+	case statusSuccess:
+		return fg(greenColor).Render(oneLine("✓ " + text))
+	case statusWarning:
+		return fg(amberColor).Render(oneLine(text))
+	default:
+		return fg(errorColor).Render(oneLine(text))
+	}
+}
+
+// currentStatus picks what the footer reports. An action result wins over the
+// standing refresh error and cache warning.
+func (m Model) currentStatus() (statusLine, bool) {
+	switch {
+	case m.status.text != "":
+		return m.status, true
+	case m.refreshErr != nil && m.stale:
+		return statusLine{text: "Refresh failed: " + m.refreshErr.Error(), kind: statusError}, true
+	case m.cacheWarning != nil:
+		return statusLine{text: "Warning: " + m.cacheWarning.Error(), kind: statusWarning}, true
+	}
+	return statusLine{}, false
 }
 
 func (m Model) now() time.Time {
@@ -290,20 +320,11 @@ func (m Model) now() time.Time {
 	return time.Time{}
 }
 
-func renderPane(content string, width, height int, focused bool) string {
-	lines := strings.Split(content, "\n")
-	content = strings.Join(lines[:min(len(lines), max(0, height-paneBorderHeight))], "\n")
-	borderColor := mutedColor
-	if focused {
-		borderColor = accentColor
+func padTo(value string, width int) string {
+	if gap := width - ansi.StringWidth(value); gap > 0 {
+		return value + strings.Repeat(" ", gap)
 	}
-	return lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Padding(0, 1).
-		Width(max(0, width)).
-		Height(max(0, height)).
-		Render(content)
+	return value
 }
 
 func truncateLine(value string, width int) string {
@@ -327,7 +348,8 @@ func oneLine(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
-func relativeAge(now, then time.Time) string {
+// compactAge renders an elapsed time as now, 5m, 3h or 2d.
+func compactAge(now, then time.Time) string {
 	if now.IsZero() || then.IsZero() || !now.After(then) {
 		return "now"
 	}
@@ -336,10 +358,10 @@ func relativeAge(now, then time.Time) string {
 	case age < time.Minute:
 		return "now"
 	case age < time.Hour:
-		return fmt.Sprintf("%dm ago", int(age/time.Minute))
+		return fmt.Sprintf("%dm", int(age/time.Minute))
 	case age < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(age/time.Hour))
+		return fmt.Sprintf("%dh", int(age/time.Hour))
 	default:
-		return fmt.Sprintf("%dd ago", int(age/(24*time.Hour)))
+		return fmt.Sprintf("%dd", int(age/(24*time.Hour)))
 	}
 }

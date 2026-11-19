@@ -1,32 +1,32 @@
-PRQ • 2 pull requests • refreshing • last updated <age>
-╭─────────────────────────────────────────────────────────────────────╮ ╭──────────────────────────────────────────────╮
-│ PULL REQUESTS · 1 selected                                          │ │ DETAIL                                       │
-│ › [ ] Fix session refresh                                           │ │ Fix session refresh                          │
-│       acme/api #184 · approved · Checks passing                     │ │ acme/api #184  •  OPEN                       │
-│                                                                     │ │                                              │
-│   [x] Add invoice filters                                           │ │ Review   approved                            │
-│       acme/web #92  DRAFT · changes requested · Checks failing      │ │ Checks   passing                             │
-│                                                                     │ │                                              │
-│                                                                     │ │ Created  <age>                             │
-│                                                                     │ │ Updated  <age>                              │
-│                                                                     │ │ https://github.com/acme/api/pull/184         │
-│                                                                     │ ╰──────────────────────────────────────────────╯
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-│                                                                     │
-╰─────────────────────────────────────────────────────────────────────╯
+ prq  ● 1 ready  ○ 2 review  ✗ 2 blocked  ◇ 1 draft                                           2 selected  synced 8m ago
 
-↑/↓ move Space select a all Esc clear c copy 1 selected o open r refresh ? help q quit
+ ✗ BLOCKED 2                                                          │  acme/api #190
+ □ api#201  Rotate signing keys without invalidating live …   checks  │  Cache session lookups
+ ■ web#77   Migrate billing webhooks                         changes  │
+                                                                      │  review    ○ required
+ ● READY TO MERGE 1                                                   │  checks    ◌ pending
+ ■ api#184  Fix session refresh                                  10d  │  branch    ken/session-cache
+                                                                      │  age       opened 5h · updated 4h
+ ○ WAITING ON REVIEW 2                                                │
+ □ api#190  Cache session lookups                               ◌ ci  │  ──────────────────────────────────────────────
+ □ web#85   Trim bundle size                                      1d  │
+                                                                      │  DESCRIPTION
+ ▸ ◇ DRAFT 1                                                          │
+                                                                      │  Adds a short lived cache.
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+                                                                      │
+  2 selected  web#77 api#184                                                                         c copy  esc clear
+ ↑↓ move  tab next group  space select  c copy 2  o open  ? more

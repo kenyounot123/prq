@@ -660,14 +660,14 @@ func TestRuntimeDepsWireConcretePackagesThroughFakeExecutables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read clipboard capture: %v", err)
 	}
-	if string(clipboardCapture) != "https://github.com/Acme/API/pull/17" {
-		t.Fatalf("clipboard capture = %q, want selected PR URL", clipboardCapture)
+	if string(clipboardCapture) != "https://github.com/ACME/api/pull/31" {
+		t.Fatalf("clipboard capture = %q, want the first blocked PR, which is first on screen", clipboardCapture)
 	}
 	openCapture, err := os.ReadFile(filepath.Join(captureDirectory, "open.txt"))
 	if err != nil {
 		t.Fatalf("read open capture: %v", err)
 	}
-	if string(openCapture) != "https://github.com/Acme/API/pull/17\n" {
+	if string(openCapture) != "https://github.com/ACME/api/pull/31\n" {
 		t.Fatalf("open capture = %q, want one selected PR URL argument", openCapture)
 	}
 }

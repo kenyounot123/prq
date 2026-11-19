@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 
 	tea "charm.land/bubbletea/v2"
@@ -9,15 +10,18 @@ import (
 )
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(msg)
+	next.scrollTop = next.scrolledTop()
+	return next, cmd
+}
+
+func (m Model) update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case refreshDoneMsg:
 		m.generation++
-		m.statusMessage = ""
+		m.status = statusLine{}
 		if msg.err == nil {
-			selectedID := ""
-			if m.selected >= 0 && m.selected < len(m.pullRequests) {
-				selectedID = m.pullRequests[m.selected].ID
-			}
+			target := m.cursorTarget()
 			checked := make(map[string]bool)
 			for _, pullRequest := range msg.result.Snapshot.PullRequests {
 				if m.checked[pullRequest.ID] {
@@ -25,20 +29,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			m.checked = checked
+			oldSelected := m.selected
 			m.pullRequests = slices.Clone(msg.result.Snapshot.PullRequests)
 			m.fetchedAt = msg.result.Snapshot.FetchedAt
-			for index := range m.pullRequests {
-				if m.pullRequests[index].ID == selectedID {
-					m.selected = index
-					break
-				}
-			}
-			if len(m.pullRequests) == 0 {
-				m.selected = 0
-			} else if m.selected >= len(m.pullRequests) {
-				m.selected = len(m.pullRequests) - 1
-			} else if m.selected < 0 {
-				m.selected = 0
+			rows := m.rows()
+			if index, ok := m.locate(rows, target); ok {
+				m.selected = index
+			} else {
+				m.selected = m.nearestNavigable(rows, oldSelected)
 			}
 			m.loading = false
 			m.stale = false
@@ -55,9 +53,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err == nil {
-			m.statusMessage = msg.success
+			m.status = statusLine{text: msg.success, kind: statusSuccess}
 		} else {
-			m.statusMessage = fmt.Sprintf("%s failed: %v", msg.action, msg.err)
+			m.status = statusLine{text: fmt.Sprintf("%s failed: %v", msg.action, msg.err), kind: statusError}
 		}
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
@@ -73,15 +71,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.refreshing = true
-			m.statusMessage = ""
+			m.status = statusLine{}
 			return m, m.refreshCmd()
 		case "C":
 			if len(m.pullRequests) == 0 {
-				m.statusMessage = "No pull request selected."
+				m.status = noPullRequestSelected
 				return m, nil
 			}
-			text := app.FormatSlackList(m.pullRequests)
-			success := fmt.Sprintf("Copied %d pull requests.", len(m.pullRequests))
+			ordered := m.groupedPullRequests()
+			text := app.FormatSlackList(ordered)
+			success := fmt.Sprintf("Copied %d pull requests.", len(ordered))
 			return m, m.copyCmd(text, success)
 		case "space":
 			if pullRequest, ok := m.selectedPullRequest(); ok {
@@ -93,24 +92,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else {
 					m.checked[pullRequest.ID] = true
 				}
-				m.statusMessage = ""
+				m.status = statusLine{}
 			}
 			return m, nil
 		case "a":
 			m.checked = make(map[string]bool, len(m.pullRequests))
-			for _, pullRequest := range m.pullRequests {
+			for _, pullRequest := range m.groupedPullRequests() {
 				m.checked[pullRequest.ID] = true
 			}
-			m.statusMessage = ""
+			m.status = statusLine{}
 			return m, nil
 		case "esc":
 			m.checked = make(map[string]bool)
-			m.statusMessage = ""
+			m.status = statusLine{}
 			return m, nil
 		case "c":
 			if len(m.checked) > 0 {
 				var checked []app.PullRequest
-				for _, pullRequest := range m.pullRequests {
+				for _, pullRequest := range m.groupedPullRequests() {
 					if m.checked[pullRequest.ID] {
 						checked = append(checked, pullRequest)
 					}
@@ -123,38 +122,71 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			pullRequest, ok := m.selectedPullRequest()
 			if !ok {
-				m.statusMessage = "No pull request selected."
+				m.status = noPullRequestSelected
 				return m, nil
 			}
 			return m, m.copyCmd(pullRequest.URL, "Copied pull request URL.")
 		case "o":
 			pullRequest, ok := m.selectedPullRequest()
 			if !ok {
-				m.statusMessage = "No pull request selected."
+				m.status = noPullRequestSelected
 				return m, nil
 			}
 			return m, m.openCmd(pullRequest.URL)
 		}
 
-		switch msg.Key().Code {
-		case tea.KeyDown:
-			if m.selected < len(m.pullRequests)-1 {
-				m.selected++
-			}
-		case tea.KeyUp:
-			if m.selected > 0 {
-				m.selected--
-			}
+		switch msg.String() {
+		case "down":
+			m.selected = m.stepCursor(m.rows(), 1)
+		case "up":
+			m.selected = m.stepCursor(m.rows(), -1)
+		case "tab":
+			m.selected = m.nextGroupCursor(m.rows())
+		case "enter":
+			m = m.toggleGroupAtCursor()
 		}
 	}
 	return m, nil
 }
 
+var noPullRequestSelected = statusLine{text: "No pull request selected.", kind: statusWarning}
+
+// toggleGroupAtCursor expands a collapsed group from its header, or collapses
+// the group of the highlighted pull request and rests on its header.
+func (m Model) toggleGroupAtCursor() Model {
+	rows := m.rows()
+	if m.selected < 0 || m.selected >= len(rows) {
+		return m
+	}
+	group := rows[m.selected].group
+	m.collapsed = maps.Clone(m.collapsed)
+	if m.collapsed == nil {
+		m.collapsed = make(map[app.StatusGroup]bool)
+	}
+	expanding := m.collapsed[group]
+	m.collapsed[group] = !expanding
+	for index, row := range m.rows() {
+		if row.group != group {
+			continue
+		}
+		if expanding && !row.isHeader() {
+			m.selected = index
+			break
+		}
+		if !expanding && row.isHeader() {
+			m.selected = index
+			break
+		}
+	}
+	return m
+}
+
 func (m Model) selectedPullRequest() (app.PullRequest, bool) {
-	if m.selected < 0 || m.selected >= len(m.pullRequests) {
+	rows := m.rows()
+	if m.selected < 0 || m.selected >= len(rows) || rows[m.selected].isHeader() {
 		return app.PullRequest{}, false
 	}
-	return m.pullRequests[m.selected], true
+	return m.pullRequests[rows[m.selected].pullRequest], true
 }
 
 func (m Model) refreshCmd() tea.Cmd {

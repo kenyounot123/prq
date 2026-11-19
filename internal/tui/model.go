@@ -10,12 +10,24 @@ import (
 )
 
 const (
-	wideLayoutMin       = 100
-	paneFrameWidth      = 4
-	paneBorderHeight    = 2
-	dashboardChromeRows = 3
-	detailMetadataRows  = 10
+	wideLayoutMin = 100
+	pageMargin    = 1
+	// headerRows is the summary line plus the blank line under it.
+	headerRows = 2
 )
+
+type statusKind int
+
+const (
+	statusSuccess statusKind = iota
+	statusWarning
+	statusError
+)
+
+type statusLine struct {
+	text string
+	kind statusKind
+}
 
 type Dependencies struct {
 	Refresh func(context.Context, app.Selection) (app.RefreshResult, error)
@@ -37,23 +49,25 @@ type actionDoneMsg struct {
 }
 
 type Model struct {
-	ctx           context.Context
-	selection     app.Selection
-	pullRequests  []app.PullRequest
-	fetchedAt     time.Time
-	loading       bool
-	refreshing    bool
-	stale         bool
-	refreshErr    error
-	cacheWarning  error
-	selected      int
-	checked       map[string]bool
-	width         int
-	height        int
-	showHelp      bool
-	statusMessage string
-	generation    uint64
-	deps          Dependencies
+	ctx          context.Context
+	selection    app.Selection
+	pullRequests []app.PullRequest
+	fetchedAt    time.Time
+	loading      bool
+	refreshing   bool
+	stale        bool
+	refreshErr   error
+	cacheWarning error
+	selected     int
+	checked      map[string]bool
+	width        int
+	height       int
+	showHelp     bool
+	status       statusLine
+	collapsed    map[app.StatusGroup]bool
+	scrollTop    int
+	generation   uint64
+	deps         Dependencies
 }
 
 func NewModel(
@@ -70,12 +84,14 @@ func NewModel(
 		refreshing:   true,
 		cacheWarning: cacheWarning,
 		checked:      make(map[string]bool),
+		collapsed:    map[app.StatusGroup]bool{app.StatusDraft: true},
 		deps:         deps,
 	}
 	if cached != nil {
 		model.pullRequests = slices.Clone(cached.PullRequests)
 		model.fetchedAt = cached.FetchedAt
 	}
+	model.selected = model.firstNavigable(model.rows())
 	return model
 }
 
@@ -88,20 +104,48 @@ func (m *Model) resize(width, height int) {
 	m.height = max(0, height)
 }
 
-func (m Model) chromeRows() int {
-	return dashboardChromeRows + max(0, footerLineCount(m.footerText(), m.width)-1)
+func (m Model) contentWidth() int {
+	return max(0, m.width-2*pageMargin)
 }
 
-func paneDimensions(width, height, chromeRows int) (listWidth, detailWidth, listHeight, detailHeight int) {
-	paneHeight := max(0, height-chromeRows)
-	if width >= wideLayoutMin {
-		availableWidth := max(0, width-1)
-		listWidth = availableWidth * 60 / 100
-		detailWidth = availableWidth - listWidth
-		return listWidth, detailWidth, paneHeight, min(paneHeight, detailMetadataRows+paneBorderHeight)
+func (m Model) chromeRows() int {
+	rows := headerRows + len(m.footerLines())
+	if len(m.checked) > 0 {
+		rows++
 	}
+	return rows
+}
 
-	detailHeight = min(paneHeight/2, detailMetadataRows+paneBorderHeight)
-	listHeight = paneHeight - detailHeight
-	return max(0, width), max(0, width), listHeight, detailHeight
+func (m Model) bodyHeight() int {
+	return max(0, m.height-m.chromeRows())
+}
+
+// bodyLayout sizes the list and detail panes. Wide terminals put them side by
+// side. Narrow terminals stack them with a one row rule between.
+type bodyLayout struct {
+	wide                     bool
+	listWidth, detailWidth   int
+	listHeight, detailHeight int
+}
+
+func layoutBody(width, height int) bodyLayout {
+	if width >= wideLayoutMin {
+		available := max(0, width-columnSeparatorWidth)
+		listWidth := available * 60 / 100
+		return bodyLayout{
+			wide:         true,
+			listWidth:    listWidth,
+			detailWidth:  available - listWidth,
+			listHeight:   height,
+			detailHeight: height,
+		}
+	}
+	stacked := max(0, height-1)
+	detailHeight := stacked / 2
+	return bodyLayout{
+		listWidth:    width,
+		detailWidth:  width,
+		listHeight:   stacked - detailHeight,
+		detailHeight: detailHeight,
+	}
 }

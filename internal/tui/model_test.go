@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -128,7 +127,7 @@ func TestRefreshSuccessPreservesSelectionByPullRequestID(t *testing.T) {
 		nil,
 		testDependencies(),
 	)
-	model.selected = 1
+	model = selectPullRequest(t, model, "PR_two")
 	refreshed := testSnapshot(
 		testPullRequest("PR_two", "acme/api", 2),
 		testPullRequest("PR_three", "acme/api", 3),
@@ -140,11 +139,8 @@ func TestRefreshSuccessPreservesSelectionByPullRequestID(t *testing.T) {
 	})
 	next := nextModel.(Model)
 
-	if got := next.pullRequests[next.selected].ID; got != "PR_two" {
+	if got := selectedID(next); got != "PR_two" {
 		t.Fatalf("selected pull request ID = %q, want PR_two", got)
-	}
-	if next.selected != 0 {
-		t.Fatalf("selected index = %d, want 0", next.selected)
 	}
 	if next.refreshing {
 		t.Fatal("successful refresh left refreshing active")
@@ -167,7 +163,7 @@ func TestRefreshSuccessClampsSelectionWhenSelectedPullRequestWasRemoved(t *testi
 		nil,
 		testDependencies(),
 	)
-	model.selected = 2
+	model = selectPullRequest(t, model, "PR_three")
 
 	nextModel, _ := model.Update(refreshDoneMsg{
 		result: app.RefreshResult{
@@ -176,10 +172,7 @@ func TestRefreshSuccessClampsSelectionWhenSelectedPullRequestWasRemoved(t *testi
 	})
 	next := nextModel.(Model)
 
-	if next.selected != 0 {
-		t.Fatalf("selected index = %d, want 0", next.selected)
-	}
-	if got := next.pullRequests[next.selected].ID; got != "PR_one" {
+	if got := selectedID(next); got != "PR_one" {
 		t.Fatalf("selected pull request ID = %q, want PR_one", got)
 	}
 }
@@ -230,48 +223,25 @@ func TestArrowKeysMoveHighlight(t *testing.T) {
 		testDependencies(),
 	)
 
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	if model.selected != 1 {
-		t.Fatalf("selected index after Down = %d, want 1", model.selected)
+	down := tea.KeyPressMsg(tea.Key{Code: tea.KeyDown})
+	up := tea.KeyPressMsg(tea.Key{Code: tea.KeyUp})
+	if got := selectedID(model); got != "PR_one" {
+		t.Fatalf("initial selection = %q, want the first pull request, not the group header", got)
 	}
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	if model.selected != 2 {
-		t.Fatalf("selected index past list end = %d, want 2", model.selected)
+	model = updateModel(t, model, down)
+	if got := selectedID(model); got != "PR_two" {
+		t.Fatalf("selection after Down = %q, want PR_two", got)
 	}
-	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
-	if model.selected != 1 {
-		t.Fatalf("selected index after Up = %d, want 1", model.selected)
+	model = updateModel(t, model, down)
+	model = updateModel(t, model, down)
+	if got := selectedID(model); got != "PR_three" {
+		t.Fatalf("selection past list end = %q, want PR_three", got)
 	}
-}
-
-func TestEnterLeavesModelUnchangedAndReturnsNoCommand(t *testing.T) {
-	cached := testSnapshot(testPullRequest("PR_one", "acme/api", 1))
-	model := NewModel(
-		context.Background(),
-		app.Selection{Organization: "acme", Repositories: []string{"acme/api"}},
-		&cached,
-		nil,
-		Dependencies{},
-	)
-	before := model
-
-	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-
-	if cmd != nil {
-		t.Fatal("Enter returned a command")
-	}
-	got := next.(Model)
-	if !reflect.DeepEqual(got.selection, before.selection) ||
-		!reflect.DeepEqual(got.pullRequests, before.pullRequests) ||
-		!got.fetchedAt.Equal(before.fetchedAt) ||
-		got.loading != before.loading ||
-		got.refreshing != before.refreshing ||
-		got.stale != before.stale ||
-		got.refreshErr != before.refreshErr ||
-		got.selected != before.selected ||
-		!reflect.DeepEqual(got.checked, before.checked) {
-		t.Fatal("Enter changed model state")
+	model = updateModel(t, model, up)
+	model = updateModel(t, model, up)
+	model = updateModel(t, model, up)
+	if got := selectedID(model); got != "PR_one" {
+		t.Fatalf("selection above first pull request = %q, want PR_one (headers are skipped)", got)
 	}
 }
 
@@ -291,8 +261,8 @@ func TestNewModelTracksCacheWarningAndStartsWithCompactHelp(t *testing.T) {
 	if model.showHelp {
 		t.Fatal("new model shows expanded help")
 	}
-	if model.statusMessage != "" {
-		t.Fatalf("new model status = %q, want empty", model.statusMessage)
+	if model.status.text != "" {
+		t.Fatalf("new model status = %q, want empty", model.status.text)
 	}
 }
 
@@ -312,7 +282,7 @@ func TestActionCopySelectedURL(t *testing.T) {
 		nil,
 		deps,
 	)
-	model.selected = 1
+	model = selectPullRequest(t, model, "PR_two")
 
 	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
 	if cmd == nil {
@@ -327,27 +297,29 @@ func TestActionCopySelectedURL(t *testing.T) {
 	if copied != second.URL {
 		t.Fatalf("copied text = %q, want selected URL %q", copied, second.URL)
 	}
-	if got.statusMessage != "Copied pull request URL." {
-		t.Fatalf("copy status = %q, want success confirmation", got.statusMessage)
+	if got.status.text != "Copied pull request URL." {
+		t.Fatalf("copy status = %q, want success confirmation", got.status.text)
 	}
 }
 
-func TestActionCopyAllUsesVisibleDashboardOrder(t *testing.T) {
-	first := testPullRequest("PR_one", "acme/web", 2)
-	first.Title = "First visible"
-	second := testPullRequest("PR_two", "acme/api", 1)
-	second.Title = "Second visible"
+func TestActionCopyAllUsesGroupedDashboardOrder(t *testing.T) {
+	waiting := testPullRequest("PR_waiting", "acme/web", 2)
+	blocked := testPullRequest("PR_blocked", "acme/api", 1)
+	blocked.Checks = app.ChecksFailing
+	draft := testPullRequest("PR_draft", "acme/api", 3)
+	draft.Draft = true
+	ready := testPullRequest("PR_ready", "acme/api", 4)
+	ready.Review, ready.Checks = app.ReviewApproved, app.ChecksPassing
 	copied := ""
 	deps := testDependencies()
 	deps.Copy = func(_ context.Context, text string) error {
 		copied = text
 		return nil
 	}
-	pullRequests := []app.PullRequest{first, second}
 	model := NewModel(
 		context.Background(),
 		app.Selection{Organization: "acme", Repositories: []string{"acme/api", "acme/web"}},
-		snapshotPointer(testSnapshot(pullRequests...)),
+		snapshotPointer(testSnapshot(waiting, blocked, draft, ready)),
 		nil,
 		deps,
 	)
@@ -359,12 +331,12 @@ func TestActionCopyAllUsesVisibleDashboardOrder(t *testing.T) {
 	next, _ = next.Update(cmd())
 	got := next.(Model)
 
-	want := app.FormatSlackList(pullRequests)
+	want := app.FormatSlackList([]app.PullRequest{blocked, ready, waiting, draft})
 	if copied != want {
-		t.Fatalf("copied Slack list = %q, want %q", copied, want)
+		t.Fatalf("copied Slack list = %q, want blocked, ready, waiting, draft order %q", copied, want)
 	}
-	if got.statusMessage != "Copied 2 pull requests." {
-		t.Fatalf("copy-all status = %q, want success confirmation", got.statusMessage)
+	if got.status.text != "Copied 4 pull requests." {
+		t.Fatalf("copy-all status = %q, want success confirmation", got.status.text)
 	}
 }
 
@@ -384,7 +356,7 @@ func TestActionOpenSelectedURL(t *testing.T) {
 		nil,
 		deps,
 	)
-	model.selected = 1
+	model = selectPullRequest(t, model, "PR_two")
 	model.checked[first.ID] = true
 
 	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "o", Code: 'o'}))
@@ -400,8 +372,8 @@ func TestActionOpenSelectedURL(t *testing.T) {
 	if opened != second.URL {
 		t.Fatalf("opened URL = %q, want selected URL %q", opened, second.URL)
 	}
-	if got.statusMessage != "Opened pull request." {
-		t.Fatalf("open status = %q, want success confirmation", got.statusMessage)
+	if got.status.text != "Opened pull request." {
+		t.Fatalf("open status = %q, want success confirmation", got.status.text)
 	}
 }
 
@@ -457,7 +429,7 @@ func TestActionFailuresAppearInStatusLine(t *testing.T) {
 				t.Fatal("action key returned nil command")
 			}
 			next, _ = next.Update(cmd())
-			if got := next.(Model).statusMessage; got != tt.wantStatus {
+			if got := next.(Model).status.text; got != tt.wantStatus {
 				t.Fatalf("status = %q, want %q", got, tt.wantStatus)
 			}
 		})
@@ -493,8 +465,8 @@ func TestActionKeysAreSafeNoOpsWithoutPullRequests(t *testing.T) {
 			t.Fatalf("empty-list action %q returned a command", key.Text)
 		}
 		model = next.(Model)
-		if model.statusMessage != "No pull request selected." {
-			t.Fatalf("empty-list action %q status = %q", key.Text, model.statusMessage)
+		if model.status.text != "No pull request selected." {
+			t.Fatalf("empty-list action %q status = %q", key.Text, model.status.text)
 		}
 	}
 	if calls != 0 {
@@ -577,8 +549,8 @@ func TestRefreshFailurePreservesCachedDataAndMarksItStale(t *testing.T) {
 	if !got.stale {
 		t.Fatal("failed cached refresh is not marked stale")
 	}
-	if status := strings.TrimSpace(ansi.Strip(got.renderStatus())); status != "Refresh failed: network unavailable" {
-		t.Fatalf("failure status = %q", status)
+	if footer := footerText(got); !strings.Contains(footer, "Refresh failed: network unavailable") {
+		t.Fatalf("footer = %q, want refresh failure", footer)
 	}
 }
 
@@ -622,13 +594,13 @@ func TestRefreshCompletionSupersedesEarlierActionStatus(t *testing.T) {
 		nil,
 		testDependencies(),
 	)
-	model.statusMessage = "Copied pull request URL."
+	model.status = statusLine{text: "Copied pull request URL.", kind: statusSuccess}
 
 	t.Run("failure", func(t *testing.T) {
 		next, _ := model.Update(refreshDoneMsg{err: errors.New("network unavailable")})
 		got := next.(Model)
-		if got.statusMessage != "" {
-			t.Fatalf("status after refresh failure = %q, want transient action status cleared", got.statusMessage)
+		if got.status.text != "" {
+			t.Fatalf("status after refresh failure = %q, want transient action status cleared", got.status.text)
 		}
 	})
 
@@ -640,8 +612,8 @@ func TestRefreshCompletionSupersedesEarlierActionStatus(t *testing.T) {
 			},
 		})
 		got := next.(Model)
-		if got.statusMessage != "" {
-			t.Fatalf("status after refresh warning = %q, want transient action status cleared", got.statusMessage)
+		if got.status.text != "" {
+			t.Fatalf("status after refresh warning = %q, want transient action status cleared", got.status.text)
 		}
 	})
 }
@@ -694,9 +666,8 @@ func TestRefreshOutcomeWinsOverEarlierActionCompletionInBothMessageOrders(t *tes
 			}
 			assertRefreshStatus := func(t *testing.T, model Model) {
 				t.Helper()
-				status := strings.TrimSpace(ansi.Strip(model.renderStatus()))
-				if status != tt.wantStatus {
-					t.Fatalf("status = %q, want refresh outcome %q", status, tt.wantStatus)
+				if footer := footerText(model); !strings.Contains(footer, tt.wantStatus) {
+					t.Fatalf("footer = %q, want refresh outcome %q", footer, tt.wantStatus)
 				}
 			}
 
@@ -715,10 +686,10 @@ func TestRefreshOutcomeWinsOverEarlierActionCompletionInBothMessageOrders(t *tes
 
 				afterRefresh, currentActionMsg := startCopy(t, refreshFirst)
 				currentAction := updateModel(t, afterRefresh, currentActionMsg)
-				if currentAction.statusMessage != "Copied pull request URL." {
+				if currentAction.status.text != "Copied pull request URL." {
 					t.Fatalf(
 						"action started after refresh status = %q, want normal confirmation",
-						currentAction.statusMessage,
+						currentAction.status.text,
 					)
 				}
 			})
@@ -750,8 +721,8 @@ func TestRefreshSuccessReplacesCacheWarningWithCurrentWarning(t *testing.T) {
 	if !errors.Is(got.cacheWarning, newWarning) {
 		t.Fatalf("cache warning = %v, want %v", got.cacheWarning, newWarning)
 	}
-	if status := strings.TrimSpace(ansi.Strip(got.renderStatus())); status != "Warning: disk full" {
-		t.Fatalf("warning status = %q", status)
+	if footer := footerText(got); !strings.Contains(footer, "Warning: disk full") {
+		t.Fatalf("footer = %q, want cache warning", footer)
 	}
 }
 
@@ -769,7 +740,7 @@ func TestHelpKeyTogglesExpandedHelp(t *testing.T) {
 	if !model.showHelp {
 		t.Fatal("help key did not expand help")
 	}
-	if footer := ansi.Strip(model.renderFooter()); !strings.Contains(footer, "copy all as Slack") {
+	if footer := footerText(model); !strings.Contains(footer, "copy all as Slack") {
 		t.Fatalf("expanded footer = %q", footer)
 	}
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "?", Code: '?'}))
@@ -842,13 +813,11 @@ func testPullRequest(id, repository string, number int) app.PullRequest {
 func TestCheckboxesAreIndependentOfHighlight(t *testing.T) {
 	model := renderTestModel()
 	space := tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "})
+	model = selectPullRequest(t, model, "PR_api_201")
 	model = updateModel(t, model, space)
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
-	if !model.checked["PR_api_184"] || model.checked["PR_web_92"] || model.selected != 1 {
-		t.Fatalf("moving highlight changed checkboxes: %#v, highlight %d", model.checked, model.selected)
-	}
-	if detail := ansi.Strip(model.renderDetailPane(80, 12)); !strings.Contains(detail, "Add invoice filters") || strings.Contains(detail, "Fix session refresh") {
-		t.Fatalf("detail does not follow highlight: %s", detail)
+	if !model.checked["PR_api_201"] || len(model.checked) != 1 || selectedID(model) == "PR_api_201" {
+		t.Fatalf("moving highlight changed checkboxes: %#v, highlight %q", model.checked, selectedID(model))
 	}
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyUp}))
 	model = updateModel(t, model, space)
@@ -857,8 +826,8 @@ func TestCheckboxesAreIndependentOfHighlight(t *testing.T) {
 	}
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
-	if len(model.checked) != 2 {
-		t.Fatalf("select all checked %d PRs, want 2", len(model.checked))
+	if len(model.checked) != len(model.pullRequests) {
+		t.Fatalf("select all checked %d PRs, want all %d including the collapsed draft", len(model.checked), len(model.pullRequests))
 	}
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
 	if len(model.checked) != 0 {
@@ -866,16 +835,39 @@ func TestCheckboxesAreIndependentOfHighlight(t *testing.T) {
 	}
 }
 
-func TestCheckedCopyUsesDashboardOrderAndKeepsSelection(t *testing.T) {
+func TestSelectionKeysAreNoOpsOnACollapsedGroupHeader(t *testing.T) {
+	copied := false
+	opened := false
 	model := renderTestModel()
-	third := testPullRequest("PR_three", "acme/api", 3)
-	model.pullRequests = append(model.pullRequests, third)
+	model.deps.Copy = func(context.Context, string) error { copied = true; return nil }
+	model.deps.Open = func(context.Context, string) error { opened = true; return nil }
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
+	if _, ok := model.selectedPullRequest(); ok {
+		t.Fatal("cursor is not on the collapsed draft header")
+	}
+
+	for _, key := range []tea.Key{{Code: tea.KeySpace, Text: " "}, {Code: 'c', Text: "c"}, {Code: 'o', Text: "o"}} {
+		next, cmd := model.Update(tea.KeyPressMsg(key))
+		if cmd != nil {
+			t.Fatalf("key %q on a header returned a command", key.Text)
+		}
+		model = next.(Model)
+	}
+	if len(model.checked) != 0 || copied || opened {
+		t.Fatalf("header actions had effects: checked %#v copied %v opened %v", model.checked, copied, opened)
+	}
+}
+
+func TestCheckedCopyUsesGroupedOrderAndKeepsSelection(t *testing.T) {
+	model := renderTestModel()
 	space := tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Text: " "})
-	model.selected = 2
-	model = updateModel(t, model, space)
-	model.selected = 0
-	model = updateModel(t, model, space)
-	model.selected = 1 // The highlighted PR is not checked.
+	for _, id := range []string{"PR_web_85", "PR_api_201"} {
+		model = selectPullRequest(t, model, id)
+		model = updateModel(t, model, space)
+	}
+	model = selectPullRequest(t, model, "PR_api_184")
 	copied := ""
 	model.deps.Copy = func(_ context.Context, text string) error { copied = text; return nil }
 	next, cmd := model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
@@ -884,22 +876,23 @@ func TestCheckedCopyUsesDashboardOrderAndKeepsSelection(t *testing.T) {
 	}
 	next, _ = next.Update(cmd())
 	model = next.(Model)
-	want := app.FormatSlackList([]app.PullRequest{model.pullRequests[0], third})
+	want := app.FormatSlackList([]app.PullRequest{pullRequestByID(t, model, "PR_api_201"), pullRequestByID(t, model, "PR_web_85")})
 	if copied != want {
-		t.Fatalf("copied %q, want %q", copied, want)
+		t.Fatalf("copied %q, want blocked before waiting %q", copied, want)
 	}
-	if model.statusMessage != "Copied 2 PRs." || len(model.checked) != 2 {
-		t.Fatalf("copy result: status %q, checkboxes %#v", model.statusMessage, model.checked)
+	if model.status.text != "Copied 2 PRs." || len(model.checked) != 2 {
+		t.Fatalf("copy result: status %q, checkboxes %#v", model.status.text, model.checked)
 	}
-	model.selected = 0
+
+	model = selectPullRequest(t, model, "PR_api_201")
 	model = updateModel(t, model, space)
 	next, cmd = model.Update(tea.KeyPressMsg(tea.Key{Text: "c", Code: 'c'}))
 	if cmd == nil {
 		t.Fatal("single checked copy returned no command")
 	}
 	next, _ = next.Update(cmd())
-	if copied != app.FormatSlackList([]app.PullRequest{third}) || next.(Model).statusMessage != "Copied 1 PR." {
-		t.Fatalf("single checked copy = %q, status %q", copied, next.(Model).statusMessage)
+	if copied != pullRequestByID(t, model, "PR_web_85").URL || next.(Model).status.text != "Copied 1 PR." {
+		t.Fatalf("single checked copy = %q, status %q", copied, next.(Model).status.text)
 	}
 }
 
@@ -907,18 +900,16 @@ func TestRefreshPreservesCheckboxesByIDAndDropsRemovedPRs(t *testing.T) {
 	model := renderTestModel()
 	model = updateModel(t, model, tea.KeyPressMsg(tea.Key{Text: "a", Code: 'a'}))
 	model = updateModel(t, model, refreshDoneMsg{err: errors.New("offline")})
-	if len(model.checked) != 2 {
+	if len(model.checked) != len(model.pullRequests) {
 		t.Fatal("failed refresh cleared checkboxes")
 	}
-	remaining := model.pullRequests[0]
+	remaining := pullRequestByID(t, model, "PR_api_184")
 	remaining.Title = "Updated title"
 	fresh := testPullRequest("PR_new", "acme/api", 3)
+	model = selectPullRequest(t, model, "PR_api_184")
 	model = updateModel(t, model, refreshDoneMsg{result: app.RefreshResult{Snapshot: testSnapshot(fresh, remaining)}})
-	if len(model.checked) != 1 || !model.checked[remaining.ID] || model.selected != 1 {
-		t.Fatalf("refresh lost selection: checked %#v, highlight %d", model.checked, model.selected)
-	}
-	if detail := ansi.Strip(model.renderDetailPane(80, 12)); !strings.Contains(detail, remaining.Title) {
-		t.Fatalf("refresh did not update detail: %s", detail)
+	if len(model.checked) != 1 || !model.checked[remaining.ID] || selectedID(model) != remaining.ID {
+		t.Fatalf("refresh lost selection: checked %#v, highlight %q", model.checked, selectedID(model))
 	}
 	model = updateModel(t, model, refreshDoneMsg{result: app.RefreshResult{Snapshot: testSnapshot()}})
 	if len(model.checked) != 0 {

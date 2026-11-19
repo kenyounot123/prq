@@ -1,32 +1,32 @@
-PRQ • 2 pull requests • refreshing • last updated <age>
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ PULL REQUESTS · 1 selected                                                   │
-│ › [ ] Fix session refresh                                                    │
-│       acme/api #184 · approved · Checks passing                              │
-│                                                                              │
-│   [x] Add invoice filters                                                    │
-│       acme/web #92  DRAFT · changes requested · Checks failing               │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-│                                                                              │
-╰──────────────────────────────────────────────────────────────────────────────╯
-╭──────────────────────────────────────────────────────────────────────────────╮
-│ DETAIL                                                                       │
-│ Fix session refresh                                                          │
-│ acme/api #184  •  OPEN                                                       │
-│                                                                              │
-│ Review   approved                                                            │
-│ Checks   passing                                                             │
-│                                                                              │
-│ Created  <age>                                                             │
-│ Updated  <age>                                                              │
-│ https://github.com/acme/api/pull/184                                         │
-╰──────────────────────────────────────────────────────────────────────────────╯
+ prq  ● 1 ready  ○ 2 review  ✗ 2 blocked  ◇ 1 draft   2 selected  synced 8m ago
 
-↑/↓ move Space select a all Esc clear c copy 1 selected o open r refresh ? help
-q quit
+ ✗ BLOCKED 2
+ □ api#201  Rotate signing keys without invalidating live sessions or…   checks
+ ■ web#77   Migrate billing webhooks                                    changes
+
+ ● READY TO MERGE 1
+ ■ api#184  Fix session refresh                                             10d
+
+ ○ WAITING ON REVIEW 2
+ □ api#190  Cache session lookups                                          ◌ ci
+ □ web#85   Trim bundle size                                                 1d
+
+ ▸ ◇ DRAFT 1
+
+
+ ──────────────────────────────────────────────────────────────────────────────
+ acme/api #190
+ Cache session lookups
+
+ review    ○ required
+ checks    ◌ pending
+ branch    ken/session-cache
+ age       opened 5h · updated 4h
+
+ ──────────────────────────────────────────────────────────────────────────────
+
+ DESCRIPTION
+
+ Adds a short lived cache.
+  2 selected  web#77 api#184                                 c copy  esc clear
+ ↑↓ move  tab next group  space select  c copy 2  o open  ? more
