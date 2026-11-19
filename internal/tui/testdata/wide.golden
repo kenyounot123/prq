@@ -11,8 +11,8 @@
  □ api#190  Cache session lookups                               ◌ ci  │  ──────────────────────────────────────────────
  □ web#85   Trim bundle size                                      1d  │
                                                                       │  DESCRIPTION
- ▸ ◇ DRAFT 1                                                          │
-                                                                      │  Adds a short lived cache.
+ ▸ ◇ DRAFT 1                                                          │  Adds a short lived cache.
+                                                                      │
                                                                       │
                                                                       │
                                                                       │

@@ -94,12 +94,11 @@ func (m Model) detailLines(pullRequest app.PullRequest, width int) []string {
 		compactAge(m.now(), pullRequest.UpdatedAt),
 	)
 	lines = append(lines,
-		labelled("age", fg(secondaryColor).Render(age)),
+		labelled("age", fg(bodyColor).Render(age)),
 		"",
 		fg(ruleColor).Render(strings.Repeat("─", width)),
 		"",
 		fg(mutedColor).Render("DESCRIPTION"),
-		"",
 	)
 
 	body := strings.TrimRight(sanitizeTerminalText(pullRequest.Body, true), " \n")

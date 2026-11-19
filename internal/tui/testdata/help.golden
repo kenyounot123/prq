@@ -12,11 +12,11 @@
  □ web#85   Trim bundle size                                      1d  │  ──────────────────────────────────────────────
                                                                       │
  ▸ ◇ DRAFT 1                                                          │  DESCRIPTION
-                                                                      │
                                                                       │  Rotates keys on a schedule.
                                                                       │
                                                                       │  - old keys stay valid for 24h
                                                                       │  - new keys are published first
+                                                                      │
                                                                       │
                                                                       │
                                                                       │

@@ -26,7 +26,7 @@
  ──────────────────────────────────────────────────────────
 
  DESCRIPTION
-
+ Rotates keys on a schedule.
  ↑↓ move  tab next group  enter expand  space select
  a select all  esc clear  c copy url  C copy all as Slack
  o open  r refresh  ? less  q quit
